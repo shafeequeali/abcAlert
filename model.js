@@ -33,7 +33,7 @@ const ApplicationModel = new mongoose.Schema({
     },
     alert_status: {
         type: String,
-        enum: ['PROCESSED', 'CREATED', 'CRASHED']
+        enum: ['PROCESSING', 'PROCESSED', 'CREATED', 'CRASHED']
     },
     created_date: {
         type: Number,
@@ -59,7 +59,10 @@ const ApplicationModel = new mongoose.Schema({
             type: String,
             enum: ['SUCCESS', 'FAILED']
         }
-    }]
+    }],
+    csv_data_length: {
+        type: Number
+    }
 
 });
 
