@@ -2,6 +2,8 @@ var express = require("express");
 var router = express.Router();
 const fileUpload = require("express-fileupload");
 const application = require("../model");
+const systemConfig = require("../modeles/systemConfig");
+const queueData = require("../modeles/Queue");
 const testModel = require("../testMode");
 const fs = require("fs");
 const csv = require("csv-parser");
@@ -666,800 +668,513 @@ router.post("/sendAlert/:id", (req, res) => {
       res.status(404).json(err);
     });
 });
+//exicution asycronously
+router.post("/sendAlert_csv/:id", async (req, res) => {
+  const TAG = "sendAlert_csv";
+  const dataBaseTrackUpdate = (id, track, callback) => {
+    // let track = {
+    //     index: index,
+    //     status: 'SUCCESS'
+    // }
+    console.log({
+      tag: TAG + " dataBaseTrackUpdate-1",
+    });
+    application
+      .findByIdAndUpdate(id, {
+        $push: {
+          whatsapp_alert_track: track,
+        },
+      })
+      .then((data) => {
+        callback();
+        console.log({
+          tag: TAG + " dataBaseTrackUpdat----",
+          // data
+        });
+      })
+      .catch((err) => {
+        callback();
+        console.log({
+          tag: TAG + " dataBaseTrackUpdatie-----",
+          err,
+        });
+      });
+  };
+  const callWhatsappApi = async (ph, data, id, track, callback) => {
+    let whatsappBody = {
+      storage: "full",
+      destination: {
+        integrationId: "60be3bbfaa6e4100d373d7ce",
+        destinationId: ph,
+        // destinationId: '918301848679',
+      },
+      author: {
+        name: "support@moplet.com",
+        email: "Moplet",
+        role: "appMaker",
+      },
+      messageSchema: "whatsapp",
+      message: {
+        type: "template",
+        template: {
+          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
+          name: "error_notification",
+          language: {
+            policy: "deterministic",
+            code: "en",
+          },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                {
+                  type: "text",
+                  text: data.name,
+                },
+                {
+                  type: "text",
+                  text: data.email_id,
+                },
+                {
+                  type: "text",
+                  text: data.roll_number,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    console.log({
+      tag: TAG + " sentWhatsAppAlert-433",
+    });
 
-// router.post("/sendAlert_csv/:id", async (req, res) => {
-//   const TAG = "sendAlert_csv";
-//   const dataBaseTrackUpdate = (id, track, callback) => {
-//     // let track = {
-//     //     index: index,
-//     //     status: 'SUCCESS'
-//     // }
-//     console.log({
-//       tag: TAG + " dataBaseTrackUpdate-1",
-//     });
-//     application
-//       .findByIdAndUpdate(id, {
-//         $push: {
-//           whatsapp_alert_track: track,
-//         },
-//       })
-//       .then((data) => {
-//         callback();
-//         console.log({
-//           tag: TAG + " dataBaseTrackUpdat----",
-//           // data
-//         });
-//       })
-//       .catch((err) => {
-//         callback();
-//         console.log({
-//           tag: TAG + " dataBaseTrackUpdatie-----",
-//           err,
-//         });
-//       });
-//   };
-//   const callWhatsappApi = async (ph, data, id, track, callback) => {
-//     let whatsappBody = {
-//       storage: "full",
-//       destination: {
-//         integrationId: "60be3bbfaa6e4100d373d7ce",
-//         destinationId: ph,
-//         // destinationId: '918301848679',
-//       },
-//       author: {
-//         name: "support@moplet.com",
-//         email: "Moplet",
-//         role: "appMaker",
-//       },
-//       messageSchema: "whatsapp",
-//       message: {
-//         type: "template",
-//         template: {
-//           namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-//           name: "error_notification",
-//           language: {
-//             policy: "deterministic",
-//             code: "en",
-//           },
-//           components: [
-//             {
-//               type: "body",
-//               parameters: [
-//                 {
-//                   type: "text",
-//                   text: data.name,
-//                 },
-//                 {
-//                   type: "text",
-//                   text: data.email_id,
-//                 },
-//                 {
-//                   type: "text",
-//                   text: data.roll_number,
-//                 },
-//               ],
-//             },
-//           ],
-//         },
-//       },
-//     };
-//     console.log({
-//       tag: TAG + " sentWhatsAppAlert-433",
-//     });
+    try {
+      return await axios({
+        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
+        },
+        data: JSON.stringify(whatsappBody),
+      });
+    } catch (err) {
+      return "err";
+    }
 
-//     try {
-//       return await axios({
-//         url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-//         method: "post",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization:
-//             "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-//         },
-//         data: JSON.stringify(whatsappBody),
-//       });
-//     } catch (err) {
-//       return "err";
-//     }
+    // .then(response => {
+    //     console.log('...................callWhatsappApi........res....');
+    //     dataBaseTrackUpdate(id, track, callback)
+    // })
+    // .catch(err => {
+    //     console.log('...................callWhatsappApi........err....');
 
-//     // .then(response => {
-//     //     console.log('...................callWhatsappApi........res....');
-//     //     dataBaseTrackUpdate(id, track, callback)
-//     // })
-//     // .catch(err => {
-//     //     console.log('...................callWhatsappApi........err....');
+    //     dataBaseTrackUpdate(id, track, callback)
+    // })
+  };
 
-//     //     dataBaseTrackUpdate(id, track, callback)
-//     // })
-//   };
+  application
+    .findByIdAndUpdate(req.params.id, {
+      alert_status: "PROCESSING",
+    })
+    .then((data) => {
+      application
+        .findById(req.params.id)
+        .then((data) => {
+          if (data.data_source === "DYNAMIC") {
+            let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
+            const bindingData = JSON.parse(data.binding_data);
+            // console.log({
+            //     tag: TAG,
+            //     data,
+            //     bindingData
+            // });
+            let results = [];
+            if (isDataAvailabe) {
+              let counter = 0;
+              fs.createReadStream(data.csv_file)
+                .pipe(csv())
+                .on("data", (csvData) => {
+                  new Promise(async (resolve, reject) => {
+                    results.push(data);
+                    // console.log(csvData);
+                    let whatsappParams = {
+                      name: "",
+                      email_id: "",
+                      roll_number: "",
+                      phone_number: "",
+                    };
+                    let whatsappapicall;
+                    for (const key in whatsappParams) {
+                      let type = bindingData[key].type;
+                      if (type === "csv_data") {
+                        // console.log('....................csvdata.........');
+                        let csv_key = bindingData[key].value;
+                        whatsappParams[key] = csvData[csv_key]
+                          ? csvData[csv_key]
+                          : "";
+                      } else if (type === "type_data") {
+                        // console.log('....................type_data.........');
+                        whatsappParams[key] = data[key] ? data[key] : "";
+                      }
+                    }
+                    // console.log(whatsappParams);
+                    let errFound =
+                      utility.whatsappParamsValidation(whatsappParams);
+                    const callback = () => {
+                      counter = counter + 1;
+                    };
+                    if (!errFound) {
+                      const track = {
+                        index: counter,
+                        status: "SUCCESS",
+                      };
 
-//   application
-//     .findByIdAndUpdate(req.params.id, {
-//       alert_status: "PROCESSING",
-//     })
-//     .then((data) => {
-//       application
-//         .findById(req.params.id)
-//         .then((data) => {
-//           if (data.data_source === "DYNAMIC") {
-//             let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-//             const bindingData = JSON.parse(data.binding_data);
-//             // console.log({
-//             //     tag: TAG,
-//             //     data,
-//             //     bindingData
-//             // });
-//             let results = [];
-//             if (isDataAvailabe) {
-//               let counter = 0;
-//               fs.createReadStream(data.csv_file)
-//                 .pipe(csv())
-//                 .on("data", (csvData) => {
-//                   new Promise(async (resolve, reject) => {
-//                     results.push(data);
-//                     // console.log(csvData);
-//                     let whatsappParams = {
-//                       name: "",
-//                       email_id: "",
-//                       roll_number: "",
-//                       phone_number: "",
-//                     };
-//                     let whatsappapicall;
-//                     for (const key in whatsappParams) {
-//                       let type = bindingData[key].type;
-//                       if (type === "csv_data") {
-//                         // console.log('....................csvdata.........');
-//                         let csv_key = bindingData[key].value;
-//                         whatsappParams[key] = csvData[csv_key]
-//                           ? csvData[csv_key]
-//                           : "";
-//                       } else if (type === "type_data") {
-//                         // console.log('....................type_data.........');
-//                         whatsappParams[key] = data[key] ? data[key] : "";
-//                       }
-//                     }
-//                     // console.log(whatsappParams);
-//                     let errFound =
-//                       utility.whatsappParamsValidation(whatsappParams);
-//                     const callback = () => {
-//                       counter = counter + 1;
-//                     };
-//                     if (!errFound) {
-//                       const track = {
-//                         index: counter,
-//                         status: "SUCCESS",
-//                       };
+                      whatsappapicall = await callWhatsappApi(
+                        whatsappParams.phone_number,
+                        whatsappParams,
+                        req.params.id,
+                        track,
+                        callback
+                      );
+                    } else {
+                      const track = {
+                        index: counter,
+                        status: "FAILED",
+                      };
 
-//                       whatsappapicall = await callWhatsappApi(
-//                         whatsappParams.phone_number,
-//                         whatsappParams,
-//                         req.params.id,
-//                         track,
-//                         callback
-//                       );
-//                     } else {
-//                       const track = {
-//                         index: counter,
-//                         status: "FAILED",
-//                       };
+                      whatsappapicall = await callWhatsappApi(
+                        whatsappParams.phone_number,
+                        whatsappParams,
+                        req.params.id,
+                        track,
+                        callback
+                      );
+                    }
+                    // counter = counter + 1
+                    // ph, data, id, track, callback
+                    // console.log({
+                    //     tag: 'errFound',
+                    //     errFound
+                    // });
+                    // console.log({
+                    //     tag: '............on data.....csv',
+                    //     counter
+                    // });
+                    if (whatsappapicall === "err") {
+                      reject("err");
+                    } else {
+                      resolve(whatsappapicall);
+                    }
+                  })
+                    .then((res) => {
+                      const track = {
+                        index: counter,
+                        status: "SUCCESS",
+                      };
+                      let callback2 = () => {
+                        console.log("-----------line 822------------");
+                      };
+                      dataBaseTrackUpdate(req.params.id, track, callback2);
+                    })
+                    .catch((err) => {
+                      const track = {
+                        index: counter,
+                        status: "FAILED",
+                      };
+                      let callback2 = () => {
+                        console.log("-----------line 822------------");
+                      };
+                      dataBaseTrackUpdate(req.params.id, track, callback2);
+                    });
+                })
+                .on("end", () => {
+                  // console.log({
+                  //     tag: '.............on end---',
+                  //     counter,
+                  //     length: results.length
+                  // });
+                  application
+                    .findByIdAndUpdate(req.params.id, {
+                      csv_data_length: results.length,
+                    })
+                    .then((data) => {
+                      console.log({
+                        tag: TAG + "at status update",
+                        data,
+                      });
+                    })
+                    .catch((err) => {
+                      console.log({
+                        tag: TAG + "at status update",
+                        err,
+                      });
+                    });
+                });
+            } else {
+              res.status(404).json({
+                message: "csv fle not found",
+              });
+            }
+          } else if (data.data_source === "STATIC") {
+            res.send("STATIC NOT WORKING");
+          }
+        })
+        .catch((err) => {
+          res.status(404).json(err);
+        });
 
-//                       whatsappapicall = await callWhatsappApi(
-//                         whatsappParams.phone_number,
-//                         whatsappParams,
-//                         req.params.id,
-//                         track,
-//                         callback
-//                       );
-//                     }
-//                     // counter = counter + 1
-//                     // ph, data, id, track, callback
-//                     // console.log({
-//                     //     tag: 'errFound',
-//                     //     errFound
-//                     // });
-//                     // console.log({
-//                     //     tag: '............on data.....csv',
-//                     //     counter
-//                     // });
-//                     if (whatsappapicall === "err") {
-//                       reject("err");
-//                     } else {
-//                       resolve(whatsappapicall);
-//                     }
-//                   })
-//                     .then((res) => {
-//                       const track = {
-//                         index: counter,
-//                         status: "SUCCESS",
-//                       };
-//                       let callback2 = () => {
-//                         console.log("-----------line 822------------");
-//                       };
-//                       dataBaseTrackUpdate(req.params.id, track, callback2);
-//                     })
-//                     .catch((err) => {
-//                       const track = {
-//                         index: counter,
-//                         status: "FAILED",
-//                       };
-//                       let callback2 = () => {
-//                         console.log("-----------line 822------------");
-//                       };
-//                       dataBaseTrackUpdate(req.params.id, track, callback2);
-//                     });
-//                 })
-//                 .on("end", () => {
-//                   // console.log({
-//                   //     tag: '.............on end---',
-//                   //     counter,
-//                   //     length: results.length
-//                   // });
-//                   application
-//                     .findByIdAndUpdate(req.params.id, {
-//                       csv_data_length: results.length,
-//                     })
-//                     .then((data) => {
-//                       console.log({
-//                         tag: TAG + "at status update",
-//                         data,
-//                       });
-//                     })
-//                     .catch((err) => {
-//                       console.log({
-//                         tag: TAG + "at status update",
-//                         err,
-//                       });
-//                     });
-//                 });
-//             } else {
-//               res.status(404).json({
-//                 message: "csv fle not found",
-//               });
-//             }
-//           } else if (data.data_source === "STATIC") {
-//             res.send("STATIC NOT WORKING");
-//           }
-//         })
-//         .catch((err) => {
-//           res.status(404).json(err);
-//         });
+      // console.log({
+      //     tag: TAG + 'at status update-PROCESSING',
+      //     // data
+      // });
+      res.json({
+        message: "processing",
+      });
+    })
+    .catch((err) => {
+      console.log({
+        tag: TAG + "at status update-PROCESSING",
+        err,
+      });
+      res.json({
+        message: "processing--failed",
+      });
+    });
+});
+//exicution more syncronously
+router.post("/sendAlert_csv2/:id", async (req, res) => {
+  const TAG = "sendAlert_csv2";
+  const dataBaseTrackUpdate = async (id, track) => {
+    // let track = {
+    //     index: index,
+    //     status: 'SUCCESS'
+    // }
+    console.log({
+      tag: TAG + " dataBaseTrackUpdate-1",
+    });
+    let trackUpdate = await application.findByIdAndUpdate(id, {
+      $push: {
+        whatsapp_alert_track: track,
+      },
+    });
+    console.log({
+      tag: TAG + " dataBaseTrackUpdate-2",
+      trackUpdateLenght: trackUpdate.length,
+    });
+  };
+  const callWhatsappApi = async (ph, data) => {
+    let whatsappBody = {
+      storage: "full",
+      destination: {
+        integrationId: "60be3bbfaa6e4100d373d7ce",
+        destinationId: ph,
+        // destinationId: '918301848679',
+      },
+      author: {
+        name: "support@moplet.com",
+        email: "Moplet",
+        role: "appMaker",
+      },
+      messageSchema: "whatsapp",
+      message: {
+        type: "template",
+        template: {
+          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
+          name: "error_notification",
+          language: {
+            policy: "deterministic",
+            code: "en",
+          },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                {
+                  type: "text",
+                  text: data.name,
+                },
+                {
+                  type: "text",
+                  text: data.email_id,
+                },
+                {
+                  type: "text",
+                  text: data.roll_number,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    console.log({
+      tag: TAG + " sentWhatsAppAlert-43344",
+    });
 
-//       // console.log({
-//       //     tag: TAG + 'at status update-PROCESSING',
-//       //     // data
-//       // });
-//       res.json({
-//         message: "processing",
-//       });
-//     })
-//     .catch((err) => {
-//       console.log({
-//         tag: TAG + "at status update-PROCESSING",
-//         err,
-//       });
-//       res.json({
-//         message: "processing--failed",
-//       });
-//     });
-// });
+    try {
+      let wRes = await axios({
+        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
+        },
+        data: JSON.stringify(whatsappBody),
+      });
+      const track = {
+        index: 99,
+        status: "SUCCESS",
+      };
+      await dataBaseTrackUpdate(req.params.id, track);
+      console.log({
+        tag: TAG + " callWhatsappApi----DATA",
+        data: wRes.data,
+      });
+    } catch (err) {
+      const track = {
+        index: 99,
+        status: "FAILED",
+      };
+      await dataBaseTrackUpdate(req.params.id, track);
+      console.log({
+        tag: TAG + " callWhatsappApi---caic-errr",
+        err,
+      });
+    }
+  };
 
-// router.post("/sendAlert_csv2/:id", async (req, res) => {
-//   const TAG = "sendAlert_csv2";
-//   const dataBaseTrackUpdate = async (id, track) => {
-//     // let track = {
-//     //     index: index,
-//     //     status: 'SUCCESS'
-//     // }
-//     console.log({
-//       tag: TAG + " dataBaseTrackUpdate-1",
-//     });
-//     await application
-//       .findByIdAndUpdate(id, {
-//         $push: {
-//           whatsapp_alert_track: track,
-//         },
-//       })
-//       .then((data) => {
-//         console.log({
-//           tag: TAG + " dataBaseTrackUpdat----",
-//           // data
-//         });
-//       })
-//       .catch((err) => {
-//         console.log({
-//           tag: TAG + " dataBaseTrackUpdatie-----",
-//           err,
-//         });
-//       });
-//   };
-//   const callWhatsappApi = async (ph, data) => {
-//     let whatsappBody = {
-//       storage: "full",
-//       destination: {
-//         integrationId: "60be3bbfaa6e4100d373d7ce",
-//         destinationId: ph,
-//         // destinationId: '918301848679',
-//       },
-//       author: {
-//         name: "support@moplet.com",
-//         email: "Moplet",
-//         role: "appMaker",
-//       },
-//       messageSchema: "whatsapp",
-//       message: {
-//         type: "template",
-//         template: {
-//           namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-//           name: "error_notification",
-//           language: {
-//             policy: "deterministic",
-//             code: "en",
-//           },
-//           components: [
-//             {
-//               type: "body",
-//               parameters: [
-//                 {
-//                   type: "text",
-//                   text: data.name,
-//                 },
-//                 {
-//                   type: "text",
-//                   text: data.email_id,
-//                 },
-//                 {
-//                   type: "text",
-//                   text: data.roll_number,
-//                 },
-//               ],
-//             },
-//           ],
-//         },
-//       },
-//     };
-//     console.log({
-//       tag: TAG + " sentWhatsAppAlert-433",
-//     });
+  application
+    .findByIdAndUpdate(req.params.id, {
+      alert_status: "PROCESSING",
+    })
+    .then((data) => {
+      application
+        .findById(req.params.id)
+        .then((data) => {
+          if (data.data_source === "DYNAMIC") {
+            let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
+            const bindingData = JSON.parse(data.binding_data);
 
-//     try {
-//       return await axios({
-//         url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-//         method: "post",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization:
-//             "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-//         },
-//         data: JSON.stringify(whatsappBody),
-//       });
-//     } catch (err) {
-//       return err;
-//     }
-//   };
+            let results = [];
+            if (isDataAvailabe) {
+              let counter = 0;
+              fs.createReadStream(data.csv_file)
+                .pipe(csv())
+                .on("data", (csvData) => {
+                  results.push(csvData);
+                })
+                .on("end", async () => {
+                  await application
+                    .findByIdAndUpdate(req.params.id, {
+                      csv_data_length: results.length,
+                    })
+                    .then((data) => {
+                      console.log({
+                        tag: TAG + "at status csv_data_length---data",
+                        // data,
+                      });
+                    })
+                    .catch((err) => {
+                      console.log({
+                        tag: TAG + "at status csv_data_length--err",
+                        err,
+                      });
+                    });
 
-//   application
-//     .findByIdAndUpdate(req.params.id, {
-//       alert_status: "PROCESSING",
-//     })
-//     .then((data) => {
-//       application
-//         .findById(req.params.id)
-//         .then((data) => {
-//           if (data.data_source === "DYNAMIC") {
-//             let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-//             const bindingData = JSON.parse(data.binding_data);
+                  new Promise(async (resolve, reject) => {
+                    // results.push(data)
+                    // console.log(csvData);
+                    for (const csvData of results) {
+                      let whatsappParams = {
+                        name: "",
+                        email_id: "",
+                        roll_number: "",
+                        phone_number: "",
+                      };
+                      let whatsappapicall;
+                      for (const key in whatsappParams) {
+                        let type = bindingData[key].type;
+                        if (type === "csv_data") {
+                          // console.log('....................csvdata.........');
+                          let csv_key = bindingData[key].value;
+                          whatsappParams[key] = csvData[csv_key]
+                            ? csvData[csv_key]
+                            : "";
+                        } else if (type === "type_data") {
+                          // console.log('....................type_data.........');
+                          whatsappParams[key] = data[key] ? data[key] : "";
+                        }
+                      }
+                      // console.log(whatsappParams);
+                      let errFound =
+                        utility.whatsappParamsValidation(whatsappParams);
 
-//             let results = [];
-//             if (isDataAvailabe) {
-//               let counter = 0;
-//               fs.createReadStream(data.csv_file)
-//                 .pipe(csv())
-//                 .on("data", (csvData) => {
-//                   results.push(csvData);
-//                 })
-//                 .on("end", async () => {
-//                   await application
-//                     .findByIdAndUpdate(req.params.id, {
-//                       csv_data_length: results.length,
-//                     })
-//                     .then((data) => {
-//                       console.log({
-//                         tag: TAG + "at status update",
-//                         data,
-//                       });
-//                     })
-//                     .catch((err) => {
-//                       console.log({
-//                         tag: TAG + "at status update",
-//                         err,
-//                       });
-//                     });
+                      if (!errFound) {
+                        whatsappapicall = await callWhatsappApi(
+                          whatsappParams.phone_number,
+                          whatsappParams
+                        );
+                      } else {
+                        const track = {
+                          index: counter,
+                          status: "FAILED",
+                        };
+                        await dataBaseTrackUpdate(req.params.id, track);
+                      }
+                      counter = counter + 1;
+                    }
 
-//                   new Promise(async (resolve, reject) => {
-//                     // results.push(data)
-//                     // console.log(csvData);
-//                     for (const csvData of results) {
-//                       let whatsappParams = {
-//                         name: "",
-//                         email_id: "",
-//                         roll_number: "",
-//                         phone_number: "",
-//                       };
-//                       let whatsappapicall;
-//                       for (const key in whatsappParams) {
-//                         let type = bindingData[key].type;
-//                         if (type === "csv_data") {
-//                           // console.log('....................csvdata.........');
-//                           let csv_key = bindingData[key].value;
-//                           whatsappParams[key] = csvData[csv_key]
-//                             ? csvData[csv_key]
-//                             : "";
-//                         } else if (type === "type_data") {
-//                           // console.log('....................type_data.........');
-//                           whatsappParams[key] = data[key] ? data[key] : "";
-//                         }
-//                       }
-//                       // console.log(whatsappParams);
-//                       let errFound =
-//                         utility.whatsappParamsValidation(whatsappParams);
+                    console.log(
+                      "-----------------------------------{{{{{{{{{{{{{{{{{{{{{{{]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+                    );
+                    resolve();
+                  })
+                    .then((res) => {
+                      application.findByIdAndUpdate(req.params.id, {
+                        alert_status: "PROCESSED",
+                      });
+                    })
+                    .catch((err) => {
+                      application.findByIdAndUpdate(req.params.id, {
+                        alert_status: "PROCESSED",
+                      });
+                    });
+                });
+            } else {
+              res.status(404).json({
+                message: "csv fle not found",
+              });
+            }
+          } else if (data.data_source === "STATIC") {
+            res.send("STATIC NOT WORKING");
+          }
+        })
+        .catch((err) => {
+          res.status(404).json(err);
+        });
 
-//                       if (!errFound) {
-//                         const track = {
-//                           index: counter,
-//                           status: "SUCCESS",
-//                         };
+      res.json({
+        message: "processing",
+      });
+    })
+    .catch((err) => {
+      console.log({
+        tag: TAG + "at status update-PROCESSING",
+        err,
+      });
+      res.json({
+        message: "processing--failed",
+      });
+    });
+});
 
-//                         whatsappapicall = await callWhatsappApi(
-//                           whatsappParams.phone_number,
-//                           whatsappParams
-//                         );
-//                         await dataBaseTrackUpdate(req.params.id, track);
-//                       } else {
-//                         const track = {
-//                           index: counter,
-//                           status: "FAILED",
-//                         };
-//                         await dataBaseTrackUpdate(req.params.id, track);
-//                       }
-//                       counter = counter + 1;
-//                     }
-//                     resolve();
-//                   })
-//                     .then((res) => {
-//                       application.findByIdAndUpdate(req.params.id, {
-//                         alert_status: "PROCESSED",
-//                       });
-//                     })
-//                     .catch((err) => {
-//                       application.findByIdAndUpdate(req.params.id, {
-//                         alert_status: "PROCESSED",
-//                       });
-//                     });
-//                 });
-//             } else {
-//               res.status(404).json({
-//                 message: "csv fle not found",
-//               });
-//             }
-//           } else if (data.data_source === "STATIC") {
-//             res.send("STATIC NOT WORKING");
-//           }
-//         })
-//         .catch((err) => {
-//           res.status(404).json(err);
-//         });
-
-//       res.json({
-//         message: "processing",
-//       });
-//     })
-//     .catch((err) => {
-//       console.log({
-//         tag: TAG + "at status update-PROCESSING",
-//         err,
-//       });
-//       res.json({
-//         message: "processing--failed",
-//       });
-//     });
-// });
-
-// router.post("/sendAlert_csv3/:id", async (req, res) => {
-//   const TAG = "sendAlert_csv3";
-//   // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
-//   // elements {id:23423132,status:running}
-//   let masterArray = [];
-//   const dataBaseTrackUpdate = async (id, track) => {
-//     // let track = {
-//     //     index: index,
-//     //     status: 'SUCCESS'
-//     // }
-//     console.log({
-//       tag: TAG + " dataBaseTrackUpdate-1",
-//     });
-//     await application
-//       .findByIdAndUpdate(id, {
-//         $push: {
-//           whatsapp_alert_track: track,
-//         },
-//       })
-//       .then((data) => {
-//         console.log({
-//           tag: TAG + " dataBaseTrackUpdat----",
-//           // data
-//         });
-//       })
-//       .catch((err) => {
-//         console.log({
-//           tag: TAG + " dataBaseTrackUpdatie-----",
-//           err,
-//         });
-//       });
-//   };
-//   const callWhatsappApi = async (ph, data) => {
-//     let whatsappBody = {
-//       storage: "full",
-//       destination: {
-//         integrationId: "60be3bbfaa6e4100d373d7ce",
-//         destinationId: ph,
-//         // destinationId: '918301848679',
-//       },
-//       author: {
-//         name: "support@moplet.com",
-//         email: "Moplet",
-//         role: "appMaker",
-//       },
-//       messageSchema: "whatsapp",
-//       message: {
-//         type: "template",
-//         template: {
-//           namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-//           name: "error_notification",
-//           language: {
-//             policy: "deterministic",
-//             code: "en",
-//           },
-//           components: [
-//             {
-//               type: "body",
-//               parameters: [
-//                 {
-//                   type: "text",
-//                   text: data.name,
-//                 },
-//                 {
-//                   type: "text",
-//                   text: data.email_id,
-//                 },
-//                 {
-//                   type: "text",
-//                   text: data.roll_number,
-//                 },
-//               ],
-//             },
-//           ],
-//         },
-//       },
-//     };
-//     console.log({
-//       tag: TAG + " sentWhatsAppAlert-433",
-//     });
-
-//     try {
-//       return await axios({
-//         url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-//         method: "post",
-//         headers: {
-//           "Content-Type": "application/json",
-//           Authorization:
-//             "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-//         },
-//         data: JSON.stringify(whatsappBody),
-//       });
-//     } catch (err) {
-//       return err;
-//     }
-//   };
-//   const finalizeAfterHundreds = (uuid) => {
-//     // we have two status in maserArray elements one is <running> and other is <completed>
-//     const elementIndex = masterArray.findIndex((e) => e.id === uuid);
-//     if (elementIndex >= 0) {
-//       const updation = {
-//         id: uuid,
-//         status: "completed",
-//         //   alerts: results,
-//       };
-//       masterArray.splice(elementIndex, 1, updation);
-//     } else {
-//       console.log({
-//         tag: TAG + "finalizeAfterHundreds",
-//         message: "error:: could not find the matched element from master array",
-//       });
-//     }
-//   };
-//   const exicuteAlerts = (results = [], bindingData, data, arrayUuid) => {
-//     new Promise(async (resolve, reject) => {
-//       let counter = 0;
-//       for (const csvData of results) {
-//         let whatsappParams = {
-//           name: "",
-//           email_id: "",
-//           roll_number: "",
-//           phone_number: "",
-//         };
-//         let whatsappapicall;
-//         for (const key in whatsappParams) {
-//           let type = bindingData[key].type;
-//           if (type === "csv_data") {
-//             // console.log('....................csvdata.........');
-//             let csv_key = bindingData[key].value;
-//             whatsappParams[key] = csvData[csv_key] ? csvData[csv_key] : "";
-//           } else if (type === "type_data") {
-//             // console.log('....................type_data.........');
-//             whatsappParams[key] = data[key] ? data[key] : "";
-//           }
-//         }
-//         // console.log(whatsappParams);
-//         let errFound = utility.whatsappParamsValidation(whatsappParams);
-
-//         if (!errFound) {
-//           const track = {
-//             index: counter,
-//             status: "SUCCESS",
-//           };
-
-//           whatsappapicall = await callWhatsappApi(
-//             whatsappParams.phone_number,
-//             whatsappParams
-//           );
-//           await dataBaseTrackUpdate(req.params.id, track);
-//         } else {
-//           const track = {
-//             index: counter,
-//             status: "FAILED",
-//           };
-//           await dataBaseTrackUpdate(req.params.id, track);
-//         }
-//         counter = counter + 1;
-//       }
-//       resolve();
-//     })
-//       .then((res) => {
-//         if (arrayUuid) {
-//           finalizeAfterHundreds(arrayUuid, "completed");
-//         }
-//         console.log({
-//           tag: TAG + " exicuteAlerts()",
-//           message: "successfully completed hundred with completed",
-//         });
-//       })
-//       .catch((err) => {
-//         if (arrayUuid) {
-//           finalizeAfterHundreds(arrayUuid, "completed");
-//         }
-//         console.log({
-//           tag: TAG + " exicuteAlerts()",
-//           message: "successfully completed hundred with crashed",
-//         });
-//       });
-//   };
-//   const masterArrayStatusChecker = () => {
-//     const found = masterArray.find((e) => e.status === "running");
-//     let processCompleted = false;
-//     if (found) {
-//       processCompleted = false;
-//     } else {
-//       processCompleted = true;
-//     }
-//     return processCompleted;
-//   };
-
-//   application
-//     .findByIdAndUpdate(req.params.id, {
-//       alert_status: "PROCESSING",
-//     })
-//     .then((data) => {
-//       application
-//         .findById(req.params.id)
-//         .then((data) => {
-//           if (data.data_source === "DYNAMIC") {
-//             let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-//             const bindingData = JSON.parse(data.binding_data);
-//             let results = [];
-//             if (isDataAvailabe) {
-//               fs.createReadStream(data.csv_file)
-//                 .pipe(csv())
-//                 .on("data", (csvData) => {
-//                   if (results.length >= 10) {
-//                     let arrayUuid = `${Date.now()} + ${masterArray.length}`;
-//                     masterArray.push({
-//                       id: arrayUuid,
-//                       status: "running",
-//                       //   alerts: results,
-//                     });
-//                     exicuteAlerts(results, bindingData, data, arrayUuid);
-//                     results = [];
-//                     console.log(
-//                       `------------------on data---new array number------${masterArray.length}------------------------`
-//                     );
-//                   } else {
-//                     results.push(csvData);
-//                   }
-//                 })
-//                 .on("end", async () => {
-//                   const lengthOfResultArray = results.length;
-//                   const lengthOfMasterArray = masterArray.length;
-//                   const totalDataInMasterArray = lengthOfMasterArray * 10;
-//                   const totalLengthOfCsvData =
-//                     totalDataInMasterArray + lengthOfResultArray;
-//                   application
-//                     .findByIdAndUpdate(req.params.id, {
-//                       csv_data_length: totalLengthOfCsvData,
-//                     })
-//                     .then((data) => {
-//                       console.log({
-//                         tag: TAG + "at csv_data_length update",
-//                         // data,
-//                       });
-//                     })
-//                     .catch((err) => {
-//                       console.log({
-//                         tag: TAG + "at csv_data_length update",
-//                         err,
-//                       });
-//                     });
-//                   if (lengthOfResultArray > 0) {
-//                     let arrayUuid2 = `${Date.now()} + ${masterArray.length}`;
-//                     masterArray.push({
-//                       id: arrayUuid2,
-//                       status: "running",
-//                       //   alerts: results,
-//                     });
-//                     exicuteAlerts(results, bindingData, data, arrayUuid2);
-//                   }
-//                   let n = 1;
-//                   while (n === 2) {
-//                     let processCompleted = masterArrayStatusChecker;
-//                     if (processCompleted) {
-//                       application.findByIdAndUpdate(req.params.id, {
-//                         alert_status: "PROCESSED",
-//                       });
-//                       n++;
-//                     } else {
-//                       n = 1;
-//                     }
-//                   }
-//                 });
-//             } else {
-//               res.status(404).json({
-//                 message: "csv fle not found",
-//               });
-//             }
-//           } else if (data.data_source === "STATIC") {
-//             res.send("STATIC NOT WORKING");
-//           }
-//         })
-//         .catch((err) => {
-//           res.status(404).json(err);
-//         });
-
-//       res.json({
-//         message: "processing",
-//       });
-//     })
-//     .catch((err) => {
-//       console.log({
-//         tag: TAG + "at status update-PROCESSING",
-//         err,
-//       });
-//       res.json({
-//         message: "processing--failed",
-//       });
-//     });
-// });
-
-router.post("/sendAlert_csv4/:id", async (req, res) => {
-  const TAG = "sendAlert_csv4";
+//exicution at on-data callback
+router.post("/sendAlert_csv3/:id", async (req, res) => {
+  const TAG = "sendAlert_csv3";
   // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
   // elements {id:23423132,status:running}
   let masterArray = [];
@@ -1536,7 +1251,7 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
       },
     };
     console.log({
-      tag: TAG + " sentWhatsAppAlert-40000",
+      tag: TAG + " sentWhatsAppAlert-433",
     });
 
     try {
@@ -1639,7 +1354,6 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
   };
   const masterArrayStatusChecker = () => {
     const found = masterArray.find((e) => e.status === "running");
-    console.log();
     let processCompleted = false;
     if (found) {
       processCompleted = false;
@@ -1660,48 +1374,33 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
           if (data.data_source === "DYNAMIC") {
             let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
             const bindingData = JSON.parse(data.binding_data);
-            let ResultsBucket = []; // collection of result array
             let results = [];
             if (isDataAvailabe) {
               fs.createReadStream(data.csv_file)
                 .pipe(csv())
                 .on("data", (csvData) => {
-                  results.push(csvData);
                   if (results.length >= 10) {
-                    ResultsBucket.push(results);
-                    console.log({
-                      tag: TAG + "csv parse on data",
-                      results: results.length,
-                    });
-                    results = [];
-                  } else {
-                    results.push(csvData);
-                  }
-                })
-                .on("end", async () => {
-                  for (let i = 0; i < ResultsBucket.length; i++) {
-                    let arrayUuid = `${Date.now()}-${masterArray.length}`;
+                    let arrayUuid = `${Date.now()} + ${masterArray.length}`;
                     masterArray.push({
                       id: arrayUuid,
                       status: "running",
                       //   alerts: results,
                     });
-                    exicuteAlerts(
-                      ResultsBucket[i],
-                      bindingData,
-                      data,
-                      arrayUuid
+                    exicuteAlerts(results, bindingData, data, arrayUuid);
+                    results = [];
+                    console.log(
+                      `------------------on data---new array number------${masterArray.length}------------------------`
                     );
+                  } else {
+                    results.push(csvData);
                   }
-                  console.log(
-                    "--------------------------------------------------------------------"
-                  );
+                })
+                .on("end", async () => {
                   const lengthOfResultArray = results.length;
                   const lengthOfMasterArray = masterArray.length;
                   const totalDataInMasterArray = lengthOfMasterArray * 10;
                   const totalLengthOfCsvData =
                     totalDataInMasterArray + lengthOfResultArray;
-                  console.log({ ResultsBucket, lengthOfResultArray });
                   application
                     .findByIdAndUpdate(req.params.id, {
                       csv_data_length: totalLengthOfCsvData,
@@ -1719,7 +1418,7 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
                       });
                     });
                   if (lengthOfResultArray > 0) {
-                    let arrayUuid2 = `${Date.now()}-${masterArray.length + 1}`;
+                    let arrayUuid2 = `${Date.now()} + ${masterArray.length}`;
                     masterArray.push({
                       id: arrayUuid2,
                       status: "running",
@@ -1728,29 +1427,17 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
                     exicuteAlerts(results, bindingData, data, arrayUuid2);
                   }
                   let n = 1;
-                  console.log("--------------------------before while loop");
-                  //   console.log({ResultsBucket});
-
-                  //   while (n < 2) {
-                  //     let processCompleted = masterArrayStatusChecker;
-                  //     if (processCompleted) {
-                  //       application.findByIdAndUpdate(req.params.id, {
-                  //         alert_status: "PROCESSED",
-                  //       });
-                  //       console.log({
-                  //         ResultsBucketlength: ResultsBucket.length,
-                  //       });
-                  //       console.log(
-                  //         "--------------in side loop-----if---------------++++++++++++========------"
-                  //       );
-                  //       n++;
-                  //     } else {
-                  //       n = 1;
-                  //       console.log(
-                  //         "--------------in side loop-----esle---------------++++++++++++========------"
-                  //       );
-                  //     }
-                  //   }
+                  while (n === 2) {
+                    let processCompleted = masterArrayStatusChecker;
+                    if (processCompleted) {
+                      application.findByIdAndUpdate(req.params.id, {
+                        alert_status: "PROCESSED",
+                      });
+                      n++;
+                    } else {
+                      n = 1;
+                    }
+                  }
                 });
             } else {
               res.status(404).json({
@@ -1778,6 +1465,371 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
         message: "processing--failed",
       });
     });
+});
+
+router.post("/sendAlert_csv4/:id", async (req, res) => {
+  const TAG = "sendAlert_csv4";
+  const IdOfExicutionRecord = "62d15a2ca8f94a0d57353c3e";
+  // console.log(await exicutionData.find({}));
+  let isSystemAvailbale = false;
+  const exicutionRecord = await systemConfig.find({});
+  if (exicutionRecord.length) {
+    const availble_system = exicutionRecordp[0].availble_system;
+    if (availble_system > 0) {
+      systemConfig.findByIdAndUpdate()
+      isSystemAvailbale = true;
+    } else {
+      isSystemAvailbale = false;
+      let newQueue = await new queueData({
+        Queue: [{ timestamp: Date.now(), alertId: req.params.id }],
+      });
+      newQueue.save();
+    }
+  }
+
+  // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
+  // elements in masterArray {id:23423132,status:running}
+  let masterArray = [];
+  const dataBaseTrackUpdate = async (id, track) => {
+    // let track = {
+    //     index: index,
+    //     status: 'SUCCESS'
+    // }
+    console.log({
+      tag: TAG + " dataBaseTrackUpdate-1",
+    });
+    await application
+      .findByIdAndUpdate(id, {
+        $push: {
+          whatsapp_alert_track: track,
+        },
+      })
+      .then((data) => {
+        console.log({
+          tag: TAG + " dataBaseTrackUpdat----",
+          // data
+        });
+      })
+      .catch((err) => {
+        console.log({
+          tag: TAG + " dataBaseTrackUpdatie-----",
+          err,
+        });
+      });
+  };
+  const callWhatsappApi = async (ph, data, count = 0) => {
+    let whatsappBody = {
+      storage: "full",
+      destination: {
+        integrationId: "60be3bbfaa6e4100d373d7ce",
+        destinationId: ph,
+        // destinationId: '918301848679',
+      },
+      author: {
+        name: "support@moplet.com",
+        email: "Moplet",
+        role: "appMaker",
+      },
+      messageSchema: "whatsapp",
+      message: {
+        type: "template",
+        template: {
+          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
+          name: "error_notification",
+          language: {
+            policy: "deterministic",
+            code: "en",
+          },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                {
+                  type: "text",
+                  text: data.name,
+                },
+                {
+                  type: "text",
+                  text: data.email_id,
+                },
+                {
+                  type: "text",
+                  text: data.roll_number,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    console.log({
+      tag: TAG + " sentWhatsAppAlert-40000",
+    });
+    try {
+      let wRes = await axios({
+        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
+        },
+        data: JSON.stringify(whatsappBody),
+      });
+      const track = {
+        index: count,
+        status: "SUCCESS",
+      };
+      await dataBaseTrackUpdate(req.params.id, track);
+      console.log({
+        tag: TAG + " callWhatsappApi----DATA",
+        data: wRes.data,
+      });
+      return count + 1;
+    } catch (err) {
+      // const track = {
+      //   index: count,
+      //   status: "FAILED",
+      // };
+      // await dataBaseTrackUpdate(req.params.id, track);
+      console.log({
+        tag: TAG + " callWhatsappApi---caic-errr",
+        err,
+      });
+    }
+  };
+  const finalizeAfterHundreds = (uuid) => {
+    // we have two status in maserArray elements one is <running> and other is <completed>
+    const elementIndex = masterArray.findIndex((e) => e.id === uuid);
+    if (elementIndex >= 0) {
+      const updation = {
+        id: uuid,
+        status: "completed",
+      };
+      masterArray.splice(elementIndex, 1, updation);
+    } else {
+      console.log({
+        tag: TAG + "finalizeAfterHundreds",
+        message: "error:: could not find the matched element from master array",
+      });
+    }
+  };
+  const exicuteAlerts = (results = [], bindingData, data, arrayUuid) => {
+    new Promise(async (resolve, reject) => {
+      let counter = 0;
+      for (const csvData of results) {
+        let whatsappParams = {
+          name: "",
+          email_id: "",
+          roll_number: "",
+          phone_number: "",
+        };
+        for (const key in whatsappParams) {
+          let type = bindingData[key].type;
+          if (type === "csv_data") {
+            // console.log('....................csvdata.........');
+            let csv_key = bindingData[key].value;
+            whatsappParams[key] = csvData[csv_key] ? csvData[csv_key] : "";
+          } else if (type === "type_data") {
+            // console.log('....................type_data.........');
+            whatsappParams[key] = data[key] ? data[key] : "";
+          }
+        }
+        // console.log(whatsappParams);
+        let errFound = utility.whatsappParamsValidation(whatsappParams);
+
+        if (!errFound) {
+          const track = {
+            index: counter,
+            status: "SUCCESS",
+          };
+
+          counter = await callWhatsappApi(
+            whatsappParams.phone_number,
+            whatsappParams,
+            counter
+          );
+        } else {
+          const track = {
+            index: counter,
+            status: "FAILED",
+          };
+          await dataBaseTrackUpdate(req.params.id, track);
+        }
+        // counter = counter + 1;
+      }
+
+      if (arrayUuid) {
+        finalizeAfterHundreds(arrayUuid, "completed");
+        console.log(
+          `&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&-count-${counter}&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&`
+        );
+      }
+      console.log({
+        tag: TAG + " exicuteAlerts()",
+        message: "successfully completed hundreds alerts",
+      });
+      console.log(
+        "========================================[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]}}}}}}}}}}}}}}}}}}}}}"
+      );
+      resolve();
+    });
+  };
+  const masterArrayStatusChecker = () => {
+    const found = masterArray.find((e) => e.status == "running");
+    console.log("------------------masterArrayStatusChecker----------------");
+    console.log(found);
+    let processCompleted = false;
+    if (found) {
+      processCompleted = false;
+    } else {
+      processCompleted = true;
+    }
+    return processCompleted;
+  };
+
+  async function masterArrayLisnter() {
+    console.log("--------------------------before setInterval loop");
+    const inervel = setInterval(() => {
+      new Promise(async (resolve) => {
+        let processCompleted = masterArrayStatusChecker();
+        if (processCompleted) {
+          try {
+            let dbAlertUpdataion = await application.findByIdAndUpdate(
+              req.params.id,
+              {
+                alert_status: "PROCESSED",
+              }
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter-findByIdAndUpdate",
+              // dbAlertUpdataion,
+            });
+          } catch (err) {
+            console.log({
+              tag: TAG + " masterArrayLisnter-findByIdAndUpdate--err",
+              err,
+            });
+          }
+
+          console.log(
+            "--------------in side setInterval-----if---------------++++++++++++========------"
+          );
+          console.log({ processCompleted });
+          clearInterval(inervel);
+        } else {
+          console.log(
+            "--------------in side setInterval-----esle---------------++++++++++++========------"
+          );
+        }
+        resolve();
+      });
+    }, 2 * 1000);
+  }
+
+  // await application
+  //   .findByIdAndUpdate(req.params.id, {
+  //     alert_status: "PROCESSING",
+  //   })
+  //   .then((data) => {
+  //     application
+  //       .findById(req.params.id)
+  //       .then((data) => {
+  //         if (data.data_source === "DYNAMIC") {
+  //           let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
+  //           const bindingData = JSON.parse(data.binding_data);
+  //           let results = [];
+  //           if (isDataAvailabe) {
+  //             fs.createReadStream(data.csv_file)
+  //               .pipe(csv())
+  //               .on("data", (csvData) => {
+  //                 results.push(csvData);
+  //               })
+  //               .on("end", () => {
+  //                 new Promise(async (resolve) => {
+  //                   let divides = [];
+  //                   for (let i = 0; i < results.length; i++) {
+  //                     divides.push(results[i]);
+
+  //                     if (divides.length >= 100) {
+  //                       let arrayUuid = `${Date.now()}-${masterArray.length}`;
+  //                       masterArray.push({
+  //                         id: arrayUuid,
+  //                         status: "running",
+  //                       });
+  //                       exicuteAlerts(divides, bindingData, data, arrayUuid);
+  //                       divides = [];
+  //                     }
+  //                   }
+  //                   const lengthOfResultArray = results.length;
+  //                   const lengthOfMasterArray = masterArray.length;
+  //                   const lengthOfDivides = divides.length;
+  //                   console.log({
+  //                     lengthOfResultArray,
+  //                     lengthOfMasterArray,
+  //                     masterArray,
+  //                     lengthOfDivides,
+  //                   });
+  //                   await application
+  //                     .findByIdAndUpdate(req.params.id, {
+  //                       csv_data_length: lengthOfResultArray,
+  //                     })
+  //                     .then((data) => {
+  //                       console.log({
+  //                         tag: TAG + "at csv_data_length update",
+  //                         // data,
+  //                       });
+  //                     })
+  //                     .catch((err) => {
+  //                       console.log({
+  //                         tag: TAG + "at csv_data_length update",
+  //                         err,
+  //                       });
+  //                     });
+  //                   if (lengthOfDivides > 0) {
+  //                     let arrayUuid2 = `${Date.now()}-${
+  //                       masterArray.length + 1
+  //                     }`;
+  //                     masterArray.push({
+  //                       id: arrayUuid2,
+  //                       status: "running",
+  //                     });
+  //                     exicuteAlerts(divides, bindingData, data, arrayUuid2);
+  //                   }
+  //                   masterArrayLisnter();
+  //                   console.log(
+  //                     "-------------------------after-------------masterArrayLisnter-"
+  //                   );
+  //                   console.log({ masterArray });
+  //                   resolve();
+  //                 });
+  //               });
+  //           } else {
+  //             res.status(404).json({
+  //               message: "csv fle not found",
+  //             });
+  //           }
+  //         } else if (data.data_source === "STATIC") {
+  //           res.send("STATIC NOT WORKING");
+  //         }
+  //       })
+  //       .catch((err) => {
+  //         res.status(404).json(err);
+  //       });
+
+  //     res.json({
+  //       message: "processing",
+  //     });
+  //   })
+  //   .catch((err) => {
+  //     console.log({
+  //       tag: TAG + "at status update-PROCESSING",
+  //       err,
+  //     });
+  //     res.json({
+  //       message: "processing--failed",
+  //     });
+  //   });
 });
 
 router.post("/test", async (req, res) => {
