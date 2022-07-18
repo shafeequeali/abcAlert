@@ -10,7 +10,8 @@ const csv = require("csv-parser");
 const axios = require("axios");
 const utility = require("../helpers/utility");
 const { count } = require("console");
-
+require("dotenv").config();
+// const setTimeout = require("timers/promises");
 // create({baseUrl: "https://jsonplaceholder.typicode.com/"});
 
 router.use(
@@ -1469,24 +1470,52 @@ router.post("/sendAlert_csv3/:id", async (req, res) => {
 
 router.post("/sendAlert_csv4/:id", async (req, res) => {
   const TAG = "sendAlert_csv4";
-  const IdOfExicutionRecord = "62d15a2ca8f94a0d57353c3e";
-  // console.log(await exicutionData.find({}));
+  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+
+  // const config = new systemConfig({ total_system: 5, availble_system: 5 });
+  // config.save();
   let isSystemAvailbale = false;
-  const exicutionRecord = await systemConfig.find({});
-  if (exicutionRecord.length) {
-    const availble_system = exicutionRecordp[0].availble_system;
+  const systemConfigration = await systemConfig.find();
+  // const queue = await queueData.find({});
+  if (systemConfigration.length) {
+    const availble_system = systemConfigration[0].availble_system;
+    console.log({
+      tag: TAG + " onInitial- systemConfigration-before updation",
+      systemConfigration,
+    });
     if (availble_system > 0) {
-      systemConfig.findByIdAndUpdate()
+      await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
+        availble_system: systemConfigration[0].availble_system - 1,
+      });
       isSystemAvailbale = true;
+      console.log(".......onInitial......availble_system >0........");
     } else {
       isSystemAvailbale = false;
       let newQueue = await new queueData({
-        Queue: [{ timestamp: Date.now(), alertId: req.params.id }],
+        alert: { timestamp: Date.now(), alertId: req.params.id },
       });
-      newQueue.save();
+      await newQueue.save();
+      try {
+        await application.findByIdAndUpdate(req.params.id, {
+          alert_status: "PROCESSING",
+        });
+      } catch (err) {
+        await application.findByIdAndUpdate(req.params.id, {
+          alert_status: "PROCESSING",
+        });
+      }
+      console.log("........onInitial.....availble_system <0...........");
+      console.log({
+        tag: TAG + " onInitial-alertInqueue-after upldation",
+        queue: await queueData.find({}),
+      });
     }
   }
-
+  // console.log({
+  //   tag: TAG,
+  //   systemConfigration: await systemConfig.find(),
+  //   queue: await queueData.find({}),
+  // });
   // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
   // elements in masterArray {id:23423132,status:running}
   let masterArray = [];
@@ -1517,7 +1546,7 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
         });
       });
   };
-  const callWhatsappApi = async (ph, data, count = 0) => {
+  const callWhatsappApi = async (ph, data, count = 0, alertId) => {
     let whatsappBody = {
       storage: "full",
       destination: {
@@ -1575,12 +1604,13 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
             "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
         },
         data: JSON.stringify(whatsappBody),
+        timeout: 1000,
       });
       const track = {
         index: count,
         status: "SUCCESS",
       };
-      await dataBaseTrackUpdate(req.params.id, track);
+      await dataBaseTrackUpdate(alertId, track);
       console.log({
         tag: TAG + " callWhatsappApi----DATA",
         data: wRes.data,
@@ -1591,7 +1621,7 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
       //   index: count,
       //   status: "FAILED",
       // };
-      // await dataBaseTrackUpdate(req.params.id, track);
+      // await dataBaseTrackUpdate(alertId, track);
       console.log({
         tag: TAG + " callWhatsappApi---caic-errr",
         err,
@@ -1614,7 +1644,13 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
       });
     }
   };
-  const exicuteAlerts = (results = [], bindingData, data, arrayUuid) => {
+  const exicuteAlerts = (
+    results = [],
+    bindingData,
+    data,
+    arrayUuid,
+    alertId
+  ) => {
     new Promise(async (resolve, reject) => {
       let counter = 0;
       for (const csvData of results) {
@@ -1643,32 +1679,47 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
             index: counter,
             status: "SUCCESS",
           };
+          console.log(
+            "************************callWhatsappApi-Delayler*********************before"
+          );
 
+          await new Promise((resolve) =>
+            setTimeout(() => {
+              console.log(
+                "************************callWhatsappApi-Delayler**********************indside"
+              );
+              resolve();
+            }, 2000)
+          );
+          console.log(
+            "************************callWhatsappApi-Delayler**********************after"
+          );
           counter = await callWhatsappApi(
             whatsappParams.phone_number,
             whatsappParams,
-            counter
+            counter,
+            alertId
           );
         } else {
           const track = {
             index: counter,
             status: "FAILED",
           };
-          await dataBaseTrackUpdate(req.params.id, track);
+          await dataBaseTrackUpdate(alertId, track);
         }
         // counter = counter + 1;
       }
 
       if (arrayUuid) {
         finalizeAfterHundreds(arrayUuid, "completed");
-        console.log(
-          `&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&-count-${counter}&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&`
-        );
       }
       console.log({
         tag: TAG + " exicuteAlerts()",
         message: "successfully completed hundreds alerts",
       });
+      console.log(
+        `&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&-count-${counter}&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&`
+      );
       console.log(
         "========================================[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]}}}}}}}}}}}}}}}}}}}}}"
       );
@@ -1688,15 +1739,16 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
     return processCompleted;
   };
 
-  async function masterArrayLisnter() {
+  async function masterArrayLisnter(alertId) {
     console.log("--------------------------before setInterval loop");
     const inervel = setInterval(() => {
       new Promise(async (resolve) => {
         let processCompleted = masterArrayStatusChecker();
         if (processCompleted) {
+          // clearInterval(inervel);
           try {
             let dbAlertUpdataion = await application.findByIdAndUpdate(
-              req.params.id,
+              alertId,
               {
                 alert_status: "PROCESSED",
               }
@@ -1710,126 +1762,234 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
               tag: TAG + " masterArrayLisnter-findByIdAndUpdate--err",
               err,
             });
+            //---retrying database updation
+            if (err) {
+              let dbAlertUpdataion = await application.findByIdAndUpdate(
+                req.params.id,
+                {
+                  alert_status: "PROCESSED",
+                }
+              );
+            }
           }
-
           console.log(
-            "--------------in side setInterval-----if---------------++++++++++++========------"
+            "--------------masterArrayLisnter ----1st-if---------------++++++++++++========------"
           );
           console.log({ processCompleted });
-          clearInterval(inervel);
+          //clearing mastert array . it was the listening source of exicution of alerts wheather it is complete or not
+          masterArray = [];
         } else {
           console.log(
-            "--------------in side setInterval-----esle---------------++++++++++++========------"
+            "--------------masterArrayLisnter---ist--esle---------------++++++++++++========------"
           );
+        }
+        if (processCompleted) {
+          const queue = await queueData.find({}).limit(3);
+          console.log(
+            "_______________________2nd if____________________masterArrayLisnter-queue"
+          );
+          console.log(
+            "__________________________2nd if_________________masterArrayLisnter-queue"
+          );
+
+          console.log({ tag: TAG + " masterArrayLisnter", queue });
+          if (queue.length > 0) {
+            const queueId = queue[0]._id;
+            await queueData.findByIdAndDelete(queueId);
+            runSystem(queue[0].alert.alertId);
+            console.log(
+              "++++++++++++++++++++++++masterArrayLisnter-letestSystemInfo- proccessing alert inqueue"
+            );
+            console.log(
+              "++++++++++++++++++++++++masterArrayLisnter-letestSystemInfo- proccessing alert inqueue"
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter--if queue-length",
+              SystemInfo: await systemConfig.find(),
+              queueInfo: await queueData.find({}),
+            });
+          } else {
+            const letestSystemInfo = await systemConfig.find();
+            const latestAvailableSystem = letestSystemInfo[0].availble_system;
+            console.log(
+              "=_____________________________masterArrayLisnter-letestSystemInfo-before system config updation"
+            );
+            console.log(
+              "=_____________________________masterArrayLisnter-letestSystemInfo-before system config updation"
+            );
+            console.log({ tag: TAG + " masterArrayLisnter", letestSystemInfo });
+            if (latestAvailableSystem < letestSystemInfo[0].total_system) {
+              await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
+                availble_system: latestAvailableSystem + 1,
+              });
+            }
+            console.log(
+              "__________________________________masterArrayLisnter-letestSystemInfo--after system config updation"
+            );
+            console.log(
+              "__________________________________masterArrayLisnter-letestSystemInfo--after system config updation"
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter",
+              SystemInfo: await systemConfig.find(),
+              queueInfo: await queueData.find({}),
+            });
+            clearInterval(inervel);
+          }
         }
         resolve();
       });
     }, 2 * 1000);
   }
 
-  // await application
-  //   .findByIdAndUpdate(req.params.id, {
-  //     alert_status: "PROCESSING",
-  //   })
-  //   .then((data) => {
-  //     application
-  //       .findById(req.params.id)
-  //       .then((data) => {
-  //         if (data.data_source === "DYNAMIC") {
-  //           let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-  //           const bindingData = JSON.parse(data.binding_data);
-  //           let results = [];
-  //           if (isDataAvailabe) {
-  //             fs.createReadStream(data.csv_file)
-  //               .pipe(csv())
-  //               .on("data", (csvData) => {
-  //                 results.push(csvData);
-  //               })
-  //               .on("end", () => {
-  //                 new Promise(async (resolve) => {
-  //                   let divides = [];
-  //                   for (let i = 0; i < results.length; i++) {
-  //                     divides.push(results[i]);
+  const alertSplitPer = parseInt(process.env.SPLIT_ALERT_PER);
+  // runSystem function is the main function or initiator
+  const runSystem = async (alertId) => {
+    await application
+      .findByIdAndUpdate(alertId, {
+        alert_status: "PROCESSING",
+      })
+      .then((data) => {
+        application
+          .findById(alertId)
+          .then((data) => {
+            if (data.data_source === "DYNAMIC") {
+              let isDataAvailabe = data
+                ? data.csv_file
+                  ? true
+                  : false
+                : false;
+              const bindingData = JSON.parse(data.binding_data);
+              let results = [];
+              if (isDataAvailabe) {
+                fs.createReadStream(data.csv_file)
+                  .pipe(csv())
+                  .on("data", (csvData) => {
+                    results.push(csvData);
+                  })
+                  .on("end", () => {
+                    new Promise(async (resolve) => {
+                      let divides = [];
+                      for (let i = 0; i < results.length; i++) {
+                        divides.push(results[i]);
 
-  //                     if (divides.length >= 100) {
-  //                       let arrayUuid = `${Date.now()}-${masterArray.length}`;
-  //                       masterArray.push({
-  //                         id: arrayUuid,
-  //                         status: "running",
-  //                       });
-  //                       exicuteAlerts(divides, bindingData, data, arrayUuid);
-  //                       divides = [];
-  //                     }
-  //                   }
-  //                   const lengthOfResultArray = results.length;
-  //                   const lengthOfMasterArray = masterArray.length;
-  //                   const lengthOfDivides = divides.length;
-  //                   console.log({
-  //                     lengthOfResultArray,
-  //                     lengthOfMasterArray,
-  //                     masterArray,
-  //                     lengthOfDivides,
-  //                   });
-  //                   await application
-  //                     .findByIdAndUpdate(req.params.id, {
-  //                       csv_data_length: lengthOfResultArray,
-  //                     })
-  //                     .then((data) => {
-  //                       console.log({
-  //                         tag: TAG + "at csv_data_length update",
-  //                         // data,
-  //                       });
-  //                     })
-  //                     .catch((err) => {
-  //                       console.log({
-  //                         tag: TAG + "at csv_data_length update",
-  //                         err,
-  //                       });
-  //                     });
-  //                   if (lengthOfDivides > 0) {
-  //                     let arrayUuid2 = `${Date.now()}-${
-  //                       masterArray.length + 1
-  //                     }`;
-  //                     masterArray.push({
-  //                       id: arrayUuid2,
-  //                       status: "running",
-  //                     });
-  //                     exicuteAlerts(divides, bindingData, data, arrayUuid2);
-  //                   }
-  //                   masterArrayLisnter();
-  //                   console.log(
-  //                     "-------------------------after-------------masterArrayLisnter-"
-  //                   );
-  //                   console.log({ masterArray });
-  //                   resolve();
-  //                 });
-  //               });
-  //           } else {
-  //             res.status(404).json({
-  //               message: "csv fle not found",
-  //             });
-  //           }
-  //         } else if (data.data_source === "STATIC") {
-  //           res.send("STATIC NOT WORKING");
-  //         }
-  //       })
-  //       .catch((err) => {
-  //         res.status(404).json(err);
-  //       });
+                        if (divides.length >= alertSplitPer) {
+                          let arrayUuid = `${Date.now()}-${masterArray.length}`;
+                          masterArray.push({
+                            id: arrayUuid,
+                            status: "running",
+                          });
+                          exicuteAlerts(
+                            divides,
+                            bindingData,
+                            data,
+                            arrayUuid,
+                            alertId
+                          );
+                          divides = [];
+                        }
+                      }
+                      const lengthOfResultArray = results.length;
+                      const lengthOfMasterArray = masterArray.length;
+                      const lengthOfDivides = divides.length;
+                      console.log({
+                        lengthOfResultArray,
+                        lengthOfMasterArray,
+                        masterArray,
+                        lengthOfDivides,
+                      });
+                      await application
+                        .findByIdAndUpdate(alertId, {
+                          csv_data_length: lengthOfResultArray,
+                        })
+                        .then((data) => {
+                          console.log({
+                            tag: TAG + "at csv_data_length update",
+                            // data,
+                          });
+                        })
+                        .catch((err) => {
+                          console.log({
+                            tag: TAG + "at csv_data_length update",
+                            err,
+                          });
+                        });
+                      if (lengthOfDivides > 0) {
+                        let arrayUuid2 = `${Date.now()}-${
+                          masterArray.length + 1
+                        }`;
+                        masterArray.push({
+                          id: arrayUuid2,
+                          status: "running",
+                        });
+                        exicuteAlerts(
+                          divides,
+                          bindingData,
+                          data,
+                          arrayUuid2,
+                          alertId
+                        );
+                      }
+                      masterArrayLisnter(alertId);
+                      console.log(
+                        "-------------------------after-------------masterArrayLisnter-"
+                      );
+                      console.log({ masterArray });
+                      resolve();
+                    });
+                  });
+              } else {
+                console.log({
+                  tag: TAG + "runSystem-csv finder",
+                  message: "csv fle not found",
+                });
+                // res.status(404).json({
+                //   message: "csv fle not found",
+                // });
+              }
+            } else if (data.data_source === "STATIC") {
+              console.log({
+                tag: TAG + "runSystem-> appliction-type-chooser",
+                message: "STATIC NOT WORKING",
+              });
+              // res.send("STATIC NOT WORKING");
+            }
+          })
+          .catch((err) => {
+            console.log({
+              tag: TAG + "runSystem-application-finder -> ",
+              message: "cought err",
+              err,
+            });
+            // res.status(404).json(err);
+          });
 
-  //     res.json({
-  //       message: "processing",
-  //     });
-  //   })
-  //   .catch((err) => {
-  //     console.log({
-  //       tag: TAG + "at status update-PROCESSING",
-  //       err,
-  //     });
-  //     res.json({
-  //       message: "processing--failed",
-  //     });
-  //   });
+        // res.json({
+        //   message: "processing",
+        // });
+      })
+      .catch((err) => {
+        console.log({
+          tag: TAG + "runSystem-application-status updation -> ",
+          message: "cought err",
+          err,
+        });
+        // res.json({
+        //   message: "processing--failed",
+        // });
+      });
+  };
+
+  //starting initiation
+  if (isSystemAvailbale) {
+    runSystem(req.params.id);
+    res.json({ message: "proccessing" });
+  } else {
+    console.log({
+      tag: TAG + " available system is zero--then alert in queue",
+    });
+    res.json({ message: "proccessing" });
+  }
 });
 
 router.post("/test", async (req, res) => {
