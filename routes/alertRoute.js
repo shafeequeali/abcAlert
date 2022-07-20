@@ -10,6 +10,7 @@ const csv = require("csv-parser");
 const axios = require("axios");
 const utility = require("../helpers/utility");
 const { count } = require("console");
+const { json } = require("body-parser");
 require("dotenv").config();
 // const setTimeout = require("timers/promises");
 // create({baseUrl: "https://jsonplaceholder.typicode.com/"});
@@ -1467,8 +1468,8 @@ router.post("/sendAlert_csv3/:id", async (req, res) => {
       });
     });
 });
-
-router.post("/sendAlert_csv4/:id", async (req, res) => {
+// 5 paralel and aplited (multiSystem)
+router.post("/sendAlert_csv4____/:id", async (req, res) => {
   const TAG = "sendAlert_csv4";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
 
@@ -1546,6 +1547,47 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
         });
       });
   };
+  const callAxios = async (body, alertId, count) => {
+    const ulrOld =
+      "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification";
+    const url2 =
+      "https://api.alpha.panel.mapapi.io/api/whatsapp/60ba619cdc52f500d37e810f/notification";
+    const url =
+      "https://alpha.api.panel.mapapi.io/whatsapp/60ba619cdc52f500d37e810f/notification";
+    try {
+      let wRes = await axios({
+        url: url,
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
+        },
+        data: JSON.stringify(body),
+        // timeout: 500,
+      });
+      const track = {
+        index: count,
+        status: "SUCCESS",
+        res_data: JSON.stringify(wRes.data ? wRes.data : "noREsponse"),
+      };
+      await dataBaseTrackUpdate(alertId, track);
+      console.log({
+        tag: TAG + " callWhatsappApi----DATA",
+        data: wRes.data,
+      });
+    } catch (err) {
+      // const track = {
+      //   index: count,
+      //   status: "FAILED",
+      // };
+      // await dataBaseTrackUpdate(alertId, track);
+      console.log({
+        tag: TAG + " callWhatsappApi---caic-errr",
+        err,
+      });
+    }
+  };
   const callWhatsappApi = async (ph, data, count = 0, alertId) => {
     let whatsappBody = {
       storage: "full",
@@ -1594,39 +1636,8 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
     console.log({
       tag: TAG + " sentWhatsAppAlert-40000",
     });
-    try {
-      let wRes = await axios({
-        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-        },
-        data: JSON.stringify(whatsappBody),
-        timeout: 1000,
-      });
-      const track = {
-        index: count,
-        status: "SUCCESS",
-      };
-      await dataBaseTrackUpdate(alertId, track);
-      console.log({
-        tag: TAG + " callWhatsappApi----DATA",
-        data: wRes.data,
-      });
-      return count + 1;
-    } catch (err) {
-      // const track = {
-      //   index: count,
-      //   status: "FAILED",
-      // };
-      // await dataBaseTrackUpdate(alertId, track);
-      console.log({
-        tag: TAG + " callWhatsappApi---caic-errr",
-        err,
-      });
-    }
+    await callAxios(whatsappBody, alertId, count);
+    return count + 1;
   };
   const finalizeAfterHundreds = (uuid) => {
     // we have two status in maserArray elements one is <running> and other is <completed>
@@ -1679,20 +1690,10 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
             index: counter,
             status: "SUCCESS",
           };
-          console.log(
-            "************************callWhatsappApi-Delayler*********************before"
-          );
-
           await new Promise((resolve) =>
             setTimeout(() => {
-              console.log(
-                "************************callWhatsappApi-Delayler**********************indside"
-              );
               resolve();
-            }, 2000)
-          );
-          console.log(
-            "************************callWhatsappApi-Delayler**********************after"
+            }, 500)
           );
           counter = await callWhatsappApi(
             whatsappParams.phone_number,
@@ -1843,6 +1844,589 @@ router.post("/sendAlert_csv4/:id", async (req, res) => {
   }
 
   const alertSplitPer = parseInt(process.env.SPLIT_ALERT_PER);
+  // runSystem function is the main function or initiator
+  const runSystem = async (alertId) => {
+    await application
+      .findByIdAndUpdate(alertId, {
+        alert_status: "PROCESSING",
+      })
+      .then((data) => {
+        application
+          .findById(alertId)
+          .then((data) => {
+            if (data.data_source === "DYNAMIC") {
+              let isDataAvailabe = data
+                ? data.csv_file
+                  ? true
+                  : false
+                : false;
+              const bindingData = JSON.parse(data.binding_data);
+              let results = [];
+              if (isDataAvailabe) {
+                fs.createReadStream(data.csv_file)
+                  .pipe(csv())
+                  .on("data", (csvData) => {
+                    results.push(csvData);
+                  })
+                  .on("end", () => {
+                    new Promise(async (resolve) => {
+                      let divides = [];
+                      for (let i = 0; i < results.length; i++) {
+                        divides.push(results[i]);
+
+                        if (divides.length >= alertSplitPer) {
+                          let arrayUuid = `${Date.now()}-${masterArray.length}`;
+                          masterArray.push({
+                            id: arrayUuid,
+                            status: "running",
+                          });
+                          exicuteAlerts(
+                            divides,
+                            bindingData,
+                            data,
+                            arrayUuid,
+                            alertId
+                          );
+                          divides = [];
+                        }
+                      }
+                      const lengthOfResultArray = results.length;
+                      const lengthOfMasterArray = masterArray.length;
+                      const lengthOfDivides = divides.length;
+                      console.log({
+                        lengthOfResultArray,
+                        lengthOfMasterArray,
+                        masterArray,
+                        lengthOfDivides,
+                      });
+                      await application
+                        .findByIdAndUpdate(alertId, {
+                          csv_data_length: lengthOfResultArray,
+                        })
+                        .then((data) => {
+                          console.log({
+                            tag: TAG + "at csv_data_length update",
+                            // data,
+                          });
+                        })
+                        .catch((err) => {
+                          console.log({
+                            tag: TAG + "at csv_data_length update",
+                            err,
+                          });
+                        });
+                      if (lengthOfDivides > 0) {
+                        let arrayUuid2 = `${Date.now()}-${
+                          masterArray.length + 1
+                        }`;
+                        masterArray.push({
+                          id: arrayUuid2,
+                          status: "running",
+                        });
+                        exicuteAlerts(
+                          divides,
+                          bindingData,
+                          data,
+                          arrayUuid2,
+                          alertId
+                        );
+                      }
+                      masterArrayLisnter(alertId);
+                      console.log(
+                        "-------------------------after-------------masterArrayLisnter-"
+                      );
+                      console.log({ masterArray });
+                      resolve();
+                    });
+                  });
+              } else {
+                console.log({
+                  tag: TAG + "runSystem-csv finder",
+                  message: "csv fle not found",
+                });
+                // res.status(404).json({
+                //   message: "csv fle not found",
+                // });
+              }
+            } else if (data.data_source === "STATIC") {
+              console.log({
+                tag: TAG + "runSystem-> appliction-type-chooser",
+                message: "STATIC NOT WORKING",
+              });
+              // res.send("STATIC NOT WORKING");
+            }
+          })
+          .catch((err) => {
+            console.log({
+              tag: TAG + "runSystem-application-finder -> ",
+              message: "cought err",
+              err,
+            });
+            // res.status(404).json(err);
+          });
+
+        // res.json({
+        //   message: "processing",
+        // });
+      })
+      .catch((err) => {
+        console.log({
+          tag: TAG + "runSystem-application-status updation -> ",
+          message: "cought err",
+          err,
+        });
+        // res.json({
+        //   message: "processing--failed",
+        // });
+      });
+  };
+
+  //starting initiation
+  if (isSystemAvailbale) {
+    runSystem(req.params.id);
+    res.json({ message: "proccessing" });
+  } else {
+    console.log({
+      tag: TAG + " available system is zero--then alert in queue",
+    });
+    res.json({ message: "proccessing" });
+  }
+});
+// multiSystem(5),with errBucket
+router.post("/sendAlert_csv5/:id", async (req, res) => {
+  const TAG = "sendAlert_csv5";
+  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+  const alertSplitPer = parseInt(process.env.SPLIT_ALERT_PER);
+  const whatsApiCallTimeOut = parseInt(
+    process.env.WHATSAPP_API_CALL_TIME_OUT_LIMIT
+  );
+  const masterArrayListeningTimeIntervel = parseInt(
+    process.env.MASTER_ARRAY_LISTENING_TIME_INTERVEL_LIMIT
+  );
+  let errorBucket = []; //{whatsappBody:'',alertId:'',ph:''}
+  // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
+  // elements in masterArray structure {id:23423132,status:running}
+  let masterArray = [];
+  // const config = new systemConfig({ total_system: 5, availble_system: 5 });
+  // config.save();
+  let isSystemAvailbale = false;
+  const systemConfigration = await systemConfig.find();
+  // const queue = await queueData.find({});
+  if (systemConfigration.length) {
+    const availble_system = systemConfigration[0].availble_system;
+    console.log({
+      tag: TAG + " onInitial- systemConfigration-before updation",
+      systemConfigration,
+    });
+    if (availble_system > 0) {
+      await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
+        availble_system: systemConfigration[0].availble_system - 1,
+      });
+      isSystemAvailbale = true;
+      console.log(".......onInitial......availble_system >0........");
+    } else {
+      isSystemAvailbale = false;
+      let newQueue = await new queueData({
+        alert: { timestamp: Date.now(), alertId: req.params.id },
+      });
+      await newQueue.save();
+      try {
+        await application.findByIdAndUpdate(req.params.id, {
+          alert_status: "PROCESSING",
+        });
+      } catch (err) {
+        await application.findByIdAndUpdate(req.params.id, {
+          alert_status: "PROCESSING",
+        });
+      }
+      console.log("........onInitial.....availble_system <0...........");
+      console.log({
+        tag: TAG + " onInitial-alertInqueue-after upldation",
+        queue: await queueData.find({}),
+      });
+    }
+  }
+
+  const dataBaseTrackUpdate = async (id, track) => {
+    // let track = {
+    //     index: index,
+    //     status: 'SUCCESS'
+    // }
+    console.log({
+      tag: TAG + " dataBaseTrackUpdate-1",
+    });
+    await application
+      .findByIdAndUpdate(id, {
+        $push: {
+          whatsapp_alert_track: track,
+        },
+      })
+      .then((data) => {
+        console.log({
+          tag: TAG + " dataBaseTrackUpdat----",
+          // data
+        });
+      })
+      .catch((err) => {
+        console.log({
+          tag: TAG + " dataBaseTrackUpdatie-----",
+          err,
+        });
+      });
+  };
+  const callAxios = async (data, alertId, ph, count) => {
+    const ulrOld =
+      "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification";
+    const url2 =
+      "https://api.alpha.panel.mapapi.io/api/whatsapp/60ba619cdc52f500d37e810f/notification";
+    const url =
+      "https://alpha.api.panel.mapapi.io/whatsapp/60ba619cdc52f500d37e810f/notification";
+
+    let whatsappBody = {
+      storage: "full",
+      destination: {
+        integrationId: "60be3bbfaa6e4100d373d7ce",
+        destinationId: ph,
+        // destinationId: '918301848679',
+      },
+      author: {
+        name: "support@moplet.com",
+        email: "Moplet",
+        role: "appMaker",
+      },
+      messageSchema: "whatsapp",
+      message: {
+        type: "template",
+        template: {
+          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
+          name: "error_notification",
+          language: {
+            policy: "deterministic",
+            code: "en",
+          },
+          components: [
+            {
+              type: "body",
+              parameters: [
+                {
+                  type: "text",
+                  text: data.name,
+                },
+                {
+                  type: "text",
+                  text: data.email_id,
+                },
+                {
+                  type: "text",
+                  text: data.roll_number,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    try {
+      let wRes = await axios({
+        url: url,
+        method: "post",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
+        },
+        data: JSON.stringify(whatsappBody),
+        // timeout: 500,
+      });
+      const track = {
+        index: count,
+        status: "SUCCESS",
+        res_data: JSON.stringify(wRes.data ? wRes.data : "noREsponse"),
+      };
+      await dataBaseTrackUpdate(alertId, track);
+      console.log({
+        tag: TAG + " callWhatsappApi----DATA",
+        data: wRes.data,
+      });
+      return true;
+    } catch (err) {
+      // const track = {
+      //   index: count,
+      //   status: "FAILED",
+      // };
+      // await dataBaseTrackUpdate(alertId, track);
+      console.log({
+        tag: TAG + " callWhatsappApi---caic-errr",
+        err,
+      });
+      return false;
+    }
+  };
+  const callWhatsappApi = async (ph, data, count = 0, alertId) => {
+    console.log({
+      tag: TAG + " sentWhatsAppAlert-40000",
+    });
+    const isApiSuccessfull = await callAxios(data, alertId, ph, count);
+    if (!isApiSuccessfull) {
+      const isApiSuccessfull2 = await callAxios(data, alertId, ph, count);
+      if (!isApiSuccessfull2) {
+        errorBucket.push({
+          data,
+          alertId,
+          ph,
+          count,
+        });
+      }
+    }
+    return count + 1;
+  };
+  const finalizeAfterHundreds = (uuid) => {
+    // we have two status in maserArray elements one is <running> and other is <completed>
+    const elementIndex = masterArray.findIndex((e) => e.id === uuid);
+    if (elementIndex >= 0) {
+      const updation = {
+        id: uuid,
+        status: "completed",
+      };
+      masterArray.splice(elementIndex, 1, updation);
+    } else {
+      console.log({
+        tag: TAG + "finalizeAfterHundreds",
+        message: "error:: could not find the matched element from master array",
+      });
+    }
+  };
+  const exicuteAlerts = (
+    results = [],
+    bindingData,
+    data,
+    arrayUuid,
+    alertId
+  ) => {
+    new Promise(async (resolve, reject) => {
+      let counter = 0;
+      for (const csvData of results) {
+        let whatsappParams = {
+          name: "",
+          email_id: "",
+          roll_number: "",
+          phone_number: "",
+        };
+        for (const key in whatsappParams) {
+          let type = bindingData[key].type;
+          if (type === "csv_data") {
+            // console.log('....................csvdata.........');
+            let csv_key = bindingData[key].value;
+            whatsappParams[key] = csvData[csv_key] ? csvData[csv_key] : "";
+          } else if (type === "type_data") {
+            // console.log('....................type_data.........');
+            whatsappParams[key] = data[key] ? data[key] : "";
+          }
+        }
+        // console.log(whatsappParams);
+        let errFound = utility.whatsappParamsValidation(whatsappParams);
+
+        if (!errFound) {
+          const track = {
+            index: counter,
+            status: "SUCCESS",
+          };
+          await new Promise((resolve) =>
+            setTimeout(() => {
+              resolve();
+            }, 500)
+          );
+          counter = await callWhatsappApi(
+            whatsappParams.phone_number,
+            whatsappParams,
+            counter,
+            alertId
+          );
+        } else {
+          const track = {
+            index: counter,
+            status: "FAILED",
+          };
+          await dataBaseTrackUpdate(alertId, track);
+        }
+        // counter = counter + 1;
+      }
+
+      if (arrayUuid) {
+        finalizeAfterHundreds(arrayUuid, "completed");
+      }
+      console.log({
+        tag: TAG + " exicuteAlerts()",
+        message: "successfully completed hundreds alerts",
+      });
+      console.log(
+        `&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&-count-${counter}&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&`
+      );
+      resolve();
+    });
+  };
+  const exicuteAlertInErrorBucket = async (errAlerts = [], arrayUuid) => {
+    for (let i = 0; i < errAlerts.length; i++) {
+      const data = errAlerts[i].data;
+      const alertId = errAlerts[i].alertId;
+      const ph = errAlerts[i].ph;
+      const count = errAlerts[i].count;
+      console.log({
+        tag: TAG + "exicuteAlertInErrorBucket --------------exicution-going-on",
+        alertId,
+      });
+      await new Promise((resolve) =>
+        setTimeout(() => {
+          resolve();
+        }, 500)
+      );
+      const isApiSuccessfull = await callAxios(data, alertId, ph, count);
+      if (!isApiSuccessfull) {
+        const errTrack = {
+          index: count,
+          status: "FAILED",
+        };
+        await dataBaseTrackUpdate(alertId, errTrack);
+        console.log({
+          tag: TAG + " exicuteAlertInErrorBucket----alert-failed",
+          message: "something went wrong in server response",
+        });
+      }
+    }
+    //master array updation
+    finalizeAfterHundreds(arrayUuid);
+  };
+  const runSystemForErrorBucket = (totalErrAlerts = []) => {
+    let div = [];
+    for (let index = 0; index < totalErrAlerts.length; index++) {
+      if (div.length >= alertSplitPer) {
+        let arrayUuid = `${Date.now()}-${masterArray.length}`;
+        masterArray.push({
+          id: arrayUuid,
+          status: "running",
+        });
+        exicuteAlertInErrorBucket(div, arrayUuid);
+      } else {
+        div.push(totalErrAlerts[index]);
+      }
+    }
+    if (div.length > 0) {
+      let arrayUuid2 = `${Date.now()}-${masterArray.length}`;
+      masterArray.push({
+        id: arrayUuid2,
+        status: "running",
+      });
+      exicuteAlertInErrorBucket(div, arrayUuid2);
+    }
+  };
+  const masterArrayStatusChecker = () => {
+    const found = masterArray.find((e) => e.status == "running");
+    console.log("------------------masterArrayStatusChecker----------------");
+    console.log(found);
+    let processCompleted = false;
+    if (found) {
+      processCompleted = false;
+    } else {
+      processCompleted = true;
+    }
+    return processCompleted;
+  };
+
+  async function masterArrayLisnter(alertId) {
+    console.log("--------------------------before setInterval loop");
+    const inervel = setInterval(() => {
+      new Promise(async (resolve) => {
+        let processCompleted = masterArrayStatusChecker();
+        let lengthOfErrorBucket = errorBucket.length;
+        if (processCompleted && lengthOfErrorBucket > 0) {
+          console.log({
+            tag:
+              TAG +
+              " masterArrayLisnter ------processCompleted && lengthOfErrorBucket > 0--------running",
+          });
+          runSystemForErrorBucket(errorBucket);
+          errorBucket = [];
+        } else if (processCompleted && lengthOfErrorBucket <= 0) {
+          try {
+            let dbAlertUpdataion = await application.findByIdAndUpdate(
+              alertId,
+              {
+                alert_status: "PROCESSED",
+              }
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter-findByIdAndUpdate",
+              // dbAlertUpdataion,
+            });
+          } catch (err) {
+            console.log({
+              tag: TAG + " masterArrayLisnter-findByIdAndUpdate--err",
+              err,
+            });
+            //---retrying database updation
+            if (err) {
+              let dbAlertUpdataion = await application.findByIdAndUpdate(
+                req.params.id,
+                {
+                  alert_status: "PROCESSED",
+                }
+              );
+            }
+          }
+
+          console.log({ processCompleted });
+          //clearing mastert array . it was the listening source of exicution of alerts wheather it is complete or not
+          masterArray = [];
+
+          const queue = await queueData.find({}).limit(3);
+          console.log(
+            "___________________________________________masterArrayLisnter-queue"
+          );
+          console.log({ tag: TAG + " masterArrayLisnter", queue });
+          if (queue.length > 0) {
+            const queueId = queue[0]._id;
+            await queueData.findByIdAndDelete(queueId);
+            runSystem(queue[0].alert.alertId);
+            console.log(
+              "++++++++++++++++++++++++masterArrayLisnter-letestSystemInfo- proccessing alert inqueue"
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter--if queue-length",
+              SystemInfo: await systemConfig.find(),
+              queueInfo: await queueData.find({}),
+            });
+          } else {
+            const letestSystemInfo = await systemConfig.find();
+            const latestAvailableSystem = letestSystemInfo[0].availble_system;
+            console.log(
+              "=_____________________________masterArrayLisnter-letestSystemInfo-before system config updation"
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter",
+              letestSystemInfo,
+            });
+            if (latestAvailableSystem < letestSystemInfo[0].total_system) {
+              await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
+                availble_system: latestAvailableSystem + 1,
+              });
+            }
+            console.log(
+              "__________________________________masterArrayLisnter-letestSystemInfo--after system config updation"
+            );
+            console.log({
+              tag: TAG + " masterArrayLisnter",
+              SystemInfo: await systemConfig.find(),
+              queueInfo: await queueData.find({}),
+            });
+            clearInterval(inervel);
+          }
+        }
+
+        resolve();
+      });
+    }, 2 * 1000);
+  }
+
   // runSystem function is the main function or initiator
   const runSystem = async (alertId) => {
     await application
