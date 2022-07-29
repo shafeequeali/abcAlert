@@ -5,6 +5,8 @@ const application = require("../model");
 const systemConfig = require("../modeles/systemConfig");
 const queueData = require("../modeles/Queue");
 const testModel = require("../testMode");
+const mainMM = require("../modeles/modules/mainModelModule");
+const campQM = require("../modeles/modules/campignQueueModule");
 const fs = require("fs");
 const csv = require("csv-parser");
 const axios = require("axios");
@@ -15,6 +17,8 @@ require("dotenv").config();
 // const setTimeout = require("timers/promises");
 // create({baseUrl: "https://jsonplaceholder.typicode.com/"});
 
+const dataBaseChecker = require("../modules/databaseChecker");
+const loadCampaignData = require("../modules/campaignLoader");
 router.use(
   fileUpload({
     limits: {
@@ -2574,6 +2578,105 @@ router.post("/sendAlert_csv5/:id", async (req, res) => {
     });
     res.json({ message: "proccessing" });
   }
+});
+//new system
+router.post("/sendAlert_csv6/:id", async (req, res) => {
+  const TAG = "sendAlert_csv6";
+  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+  const exicutableDataContainer = [];
+
+  const executableDataCreator = (data) => {
+    const alertId = data._id;
+    if (data.data_source === "DYNAMIC") {
+      let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
+      const bindingData = JSON.parse(data.binding_data);
+      let results = [];
+      if (isDataAvailabe) {
+        fs.createReadStream(data.csv_file)
+          .pipe(csv())
+          .on("data", (csvData) => {
+            results.push(csvData);
+          })
+          .on("end", () => {
+            mainMM.findByIdAndUpdate(alertId, results.length);
+            let whatsappParamsArray = [];
+            for (const csvData of results) {
+              let whatsappParams = {
+                name: "",
+                email_id: "",
+                roll_number: "",
+                phone_number: "",
+              };
+              for (const key in whatsappParams) {
+                let type = bindingData[key].type;
+                if (type === "csv_data") {
+                  // console.log('........alertId............csvdata.........');
+                  let csv_key = bindingData[key].value;
+                  whatsappParams[key] = csvData[csv_key]
+                    ? csvData[csv_key]
+                    : "";
+                } else if (type === "type_data") {
+                  // console.log('....................type_data.........');
+                  whatsappParams[key] = data[key] ? data[key] : "";
+                }
+              }
+              // console.log(whatsappParams);
+              let errFound = utility.whatsappParamsValidation(whatsappParams);
+
+              if (!errFound) {
+                whatsappParamsArray.push(whatsappParams);
+              }
+            }
+            exicutableDataContainer.push({ alertId, whatsappParamsArray });
+            console.log(
+              "-----------------------------------------------------------------"
+            );
+            console.log(exicutableDataContainer);
+          });
+      } else {
+        console.log({
+          tag: TAG + "runSystem-csv finder",
+          message: "csv fle not found",
+        });
+      }
+    } else if (data.data_source === "STATIC") {
+      console.log({
+        tag: TAG + "runSystem-> appliction-type-chooser",
+        message: "STATIC NOT WORKING",
+      });
+    }
+  };
+
+  //loading alerts
+  const loadAlerts = async () => {
+    let foundNew = false;
+    let alertData = null;
+    const dataBaseInfo = await dataBaseChecker.dataBaseChecker();
+    console.log(".........dataBaseInfo..............");
+    console.log(dataBaseInfo);
+    if (dataBaseInfo && dataBaseInfo.length > 0) {
+      foundNew = true;
+    }
+    if (foundNew) {
+      alertData = await loadCampaignData.loadCampaignData(dataBaseInfo);
+      console.log(".........alertData..............");
+      console.log(alertData);
+    }
+    if (alertData) {
+      executableDataCreator(alertData);
+    }
+  };
+
+  //calling whatsAppApi
+  const executer = () => {};
+
+  const linstener = async () => {};
+  const requestManager = async () => {
+    await campQM.save(req.params.id);
+    loadAlerts();
+  };
+  //initiator
+  requestManager();
 });
 
 router.post("/test", async (req, res) => {
