@@ -25,6 +25,14 @@ module.exports.save = async (campaignId) => {
     return null;
   }
 };
+module.exports.deleteById = async (id) => {
+  try {
+    const data = campaignQueue.findByIdAndDelete(id);
+    return data;
+  } catch (err) {
+    return null;
+  }
+};
 
 // module.exports.find=async(arg,callback)=>{
 //     try{

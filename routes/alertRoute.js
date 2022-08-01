@@ -7,6 +7,8 @@ const queueData = require("../modeles/Queue");
 const testModel = require("../testMode");
 const mainMM = require("../modeles/modules/mainModelModule");
 const campQM = require("../modeles/modules/campignQueueModule");
+const systemCM = require("../modeles/modules/systenCofigueModule");
+const whatsAppApiCaller = require("../modules/whatsAppApiCaller");
 const fs = require("fs");
 const csv = require("csv-parser");
 const axios = require("axios");
@@ -2583,8 +2585,27 @@ router.post("/sendAlert_csv5/:id", async (req, res) => {
 router.post("/sendAlert_csv6/:id", async (req, res) => {
   const TAG = "sendAlert_csv6";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+  //exicutableDataContainer is a two diamentional container
   const exicutableDataContainer = [];
-
+  //processedDataContainer: it is the to be updated in database ,elemets is object like {alertId,ph,res_data}
+  const proccessedDataContainer = [];
+  //exicutionCompletedItems: it is the data of completed item of exicutableDataContainer;
+  const exicutionCompletedContainerItems = [];
+  //executerErrorBucket is a data container ,it filled by the executer when failing the whatsApp-api calls
+  const executerErrorBucket = [];
+  var listnerCounter = 0;
+  var systemErrorReportOnDB = {
+    tag: "systemErrorReportOnDB",
+    campaignQueueError: "",
+    systemConfigError: "",
+  };
+  var systemErrorReportOnLocal = {
+    tag: "systemErrorReportOnLocal",
+    executer: "",
+  };
+  var EDCLength = exicutableDataContainer.length;
+  //LCCN : Last Called Colum Number
+  var LCCN = 0;
   const executableDataCreator = (data) => {
     const alertId = data._id;
     if (data.data_source === "DYNAMIC") {
@@ -2627,11 +2648,11 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
                 whatsappParamsArray.push(whatsappParams);
               }
             }
-            exicutableDataContainer.push({ alertId, whatsappParamsArray });
-            console.log(
-              "-----------------------------------------------------------------"
-            );
-            console.log(exicutableDataContainer);
+            exicutableDataContainer.push({
+              alertId,
+              payloads: whatsappParamsArray,
+              totalPayloads: whatsappParamsArray.length,
+            });
           });
       } else {
         console.log({
@@ -2646,37 +2667,254 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
       });
     }
   };
-
   //loading alerts
   const loadAlerts = async () => {
     let foundNew = false;
     let alertData = null;
     const dataBaseInfo = await dataBaseChecker.dataBaseChecker();
-    console.log(".........dataBaseInfo..............");
-    console.log(dataBaseInfo);
-    if (dataBaseInfo && dataBaseInfo.length > 0) {
+
+    // console.log({ tag: TAG + " loadAlerts", dataBaseInfo });
+    if (dataBaseInfo) {
       foundNew = true;
     }
     if (foundNew) {
-      alertData = await loadCampaignData.loadCampaignData(dataBaseInfo);
-      console.log(".........alertData..............");
-      console.log(alertData);
+      alertData = await loadCampaignData.loadCampaignData(
+        dataBaseInfo.campaignId
+      );
+      if (alertData) {
+        let deletion = campQM.deleteById(dataBaseInfo._id);
+        if (deletion) {
+          console.log({ tag: TAG + " loadAlerts", deletion });
+        } else {
+          console.log({ tag: TAG + " loadAlerts", message: "failed" });
+        }
+      }
+      console.log({ tag: TAG + " loadAlerts", alertData });
     }
     if (alertData) {
       executableDataCreator(alertData);
     }
   };
-
+  //linsterManager
+  const listnerManager = async () => {
+    if (listnerCounter !== 0) {
+      systemCM.updateListnerTrack(listnerCounter);
+    }
+    listnerCounter++;
+    if (listnerCounter >= 10000) {
+      systemCM.updateListner({ listener_tracker: [0] });
+      listnerCounter = 0;
+    }
+  };
+  //system Error reporter
+  const systemErrorReporter = (key, value) => {
+    systemErrorReportOnDB[key] = value;
+  };
+  //system Error reporter on local
+  const systemErrorReporterOnLocal = (key, value) => {
+    systemErrorReportOnLocal[key] = value;
+  };
+  // systemErrorAnalyser
+  const systemErrorAnalyser = async (obj) => {
+    let stoper = 0;
+    for (const key in obj) {
+      if ((stoper = 0)) {
+        if (obj[key] != "") {
+          stoper = 1;
+          console.log({
+            tag: TAG + "systemErrorAnalyser",
+            message:
+              "error detected ######################################################################",
+            message2:
+              "error detected ######################################################################",
+            message3:
+              "error detected ######################################################################",
+            errorReport: obj,
+          });
+        }
+      }
+    }
+  };
+  //executerCallback: to fillthe executerErrorBucket;
+  const executerCallback = (okData, notOkData, finalMessage) => {
+    if (okData) {
+      proccessedDataContainer.push(okData);
+    } else if (notOkData) {
+      //executerErrorBucket : this feature not yet avaible
+      // executerErrorBucket.push(notOkData);
+      proccessedDataContainer.push(notOkData);
+    }
+    if (finalMessage) {
+      exicutionCompletedContainerItems.push(finalMessage);
+    }
+    executer();
+  };
   //calling whatsAppApi
-  const executer = () => {};
+  const executer = () => {
+    
+    if (EDCLength > 0 && LCCN < EDCLength) {
+    console.log('.............................misssing fouder............in..........................');
 
-  const linstener = async () => {};
+      const item = exicutableDataContainer[LCCN];
+      const plaloadsLength = item.payloads.length;
+      const nextIndex = item.nextIndex ? item.nextIndex : 0;
+      const totalPayloads = item.totalPayloads;
+      const countOfCompleted = item.countOfCompleted
+        ? item.countOfCompleted
+        : 0;
+      if (plaloadsLength > 0 && nextIndex < plaloadsLength) {
+        let alertId = item.alertId;
+        let payload = item.payloads[nextIndex];
+        exicutableDataContainer[LCCN].nextIndex = nextIndex + 1;
+        exicutableDataContainer[LCCN].countOfCompleted = countOfCompleted + 1;
+        // final message will helped for the database updation of that alert as it is completed
+        let finalMessage = null;
+        if (countOfCompleted + 1 == totalPayloads) {
+          finalMessage = "completed";
+          exicutableDataContainer.splice(LCCN, 1);
+        } else {
+          finalMessage = null;
+        }
+        if (LCCN + 1 < EDCLength) {
+          LCCN++;
+        } else if (LCCN + 1 == EDCLength) {
+          LCCN = 0;
+        } else if (LCCN + 1 > EDCLength) {
+          LCCN = 0;
+        }
+        //accepting callback with params okData and notOkData
+        whatsAppApiCaller(payload, alertId, finalMessage, executerCallback);
+      } else {
+        if (plaloadsLength <= 0) {
+          exicutableDataContainer.splice(LCCN, 1);
+        } else if (nextIndex > plaloadsLength) {
+          systemErrorReporterOnLocal(
+            "executer",
+            "nextIndex exeeded the plaloadsLength"
+          );
+          exicutableDataContainer.splice(LCCN, 1);
+        }
+      }
+    } else {
+    console.log('.............................misssing fouder...........out...........................');
+
+      if (LCCN >= EDCLength) {
+        systemErrorReporterOnLocal("executer", "LCCN exeeded the EDCLength");
+      }
+    }
+  };
+  //runExicuter: it calls exeCuter . it is initializer of exicution stage
+  const runExicuter = () => {
+    executer();
+  };
+  //lister : handling whole the system by callin fuctions on intervels
+  const linstener = async () => {
+    const intervel = setInterval(() => {
+      console.log({
+        tag: TAG + "linstener",
+        message:
+          "====================================================================================================",
+        listnerCounter,
+        exicutableDataContainer,
+      });
+      listnerCounter++;
+      loadAlerts();
+      if (exicutableDataContainer.length > 0) {
+        runExicuter();
+      }
+    }, 500);
+  };
   const requestManager = async () => {
-    await campQM.save(req.params.id);
-    loadAlerts();
+    //campaign queue details
+    const cmq = await campQM.save(req.params.id);
+    if (cmq === null) {
+      const cmq2 = await campQM.save(req.params.id);
+      if (cmq2 === null) {
+        systemErrorReporter(
+          "campaignQueueError",
+          "can not Update alerts in to Queue  --requestManger"
+        );
+      } else {
+        console.log({
+          tag: TAG + "requestManager",
+          message: "new campaign ---cmq2 queued",
+        });
+      }
+    } else {
+      console.log({
+        tag: TAG + "requestManager",
+        message: "new campaign ---cmq queued",
+      });
+    }
+    //system config details
+    // const scm = await systemCM.save(true, listnerCounter);
+    // if (scm === null) {
+    //   const scm2 = await systemCM.save(true, listnerCounter);
+    //   if (scm2 === null) {
+    //     systemErrorReporter(
+    //       "systemConfigSaveError",
+    //       "can not save listner data into db --requestManger"
+    //     );
+    //   }
+    // }
+    let systemConfigData = await systemCM.findOne();
+    console.log("[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]");
+    console.log(systemConfigData);
+    if (systemConfigData) {
+      if (!systemConfigData.is_listener_running) {
+        const scm = await systemCM.systemConfigUpdate({
+          is_listener_running: true,
+          listener_tracker: [0],
+        });
+        if (scm === null) {
+          const scm2 = await systemCM.systemConfigUpdate({
+            is_listener_running: true,
+            listener_tracker: [0],
+          });
+          if (scm2 === null) {
+            systemErrorReporter(
+              "systemConfigError",
+              "can not save listner data into db --requestManger"
+            );
+          } else {
+            linstener();
+            console.log({
+              tag: TAG + "requestManager",
+              message:
+                "system configue --scm2. updated ,listener started running",
+            });
+          }
+        } else {
+          linstener();
+          console.log({
+            tag: TAG + "requestManager",
+            message: "system configue --scm. updated ,listener started running",
+          });
+        }
+      } else {
+        console.log({
+          tag: TAG + "requestManager",
+          message: "system configue listern is in running already",
+        });
+      }
+    } else {
+      systemErrorReporter(
+        "systemConfigError",
+        "can not find listner data from db --requestManger"
+      );
+      console.log({
+        tag: TAG + "requestManager",
+        message: "system configue not found",
+      });
+    }
+    //calling system error analyser
+    systemErrorAnalyser(systemErrorReportOnDB);
   };
   //initiator
+  //initiator
+  //initiator
   requestManager();
+  res.status(200).json({ message: "request accepted" });
 });
 
 router.post("/test", async (req, res) => {
@@ -2707,9 +2945,17 @@ router.post("/test", async (req, res) => {
     });
 });
 router.get("/test", async (req, res) => {
-  testModel.find({}).then((data) => {
-    res.json(data);
-  });
+  nnn = "test";
+  console.log(globalThis.nnn);
+  res.json(globalThis.nnn);
+
+  // testModel.find({}).then((data) => {
+  //   res.json(data);
+  // });
+});
+router.delete("/test", async (req, res) => {
+  console.log(globalThis.nnn);
+  res.json("");
 });
 
 module.exports = router;

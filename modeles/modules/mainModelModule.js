@@ -1,4 +1,5 @@
 const mainModel = require("../../model");
+const TAG = 'MAIN MODEL MODULE'
 
 module.exports.find = async (arg) => {
   try {
