@@ -8,7 +8,7 @@ const testModel = require("../testMode");
 const mainMM = require("../modeles/modules/mainModelModule");
 const campQM = require("../modeles/modules/campignQueueModule");
 const systemCM = require("../modeles/modules/systenCofigueModule");
-const whatsAppApiCaller = require("../modules/whatsAppApiCaller");
+const whatsApp = require("../modules/whatsAppApiCaller");
 const fs = require("fs");
 const csv = require("csv-parser");
 const axios = require("axios");
@@ -2603,9 +2603,43 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
     tag: "systemErrorReportOnLocal",
     executer: "",
   };
-  var EDCLength = exicutableDataContainer.length;
   //LCCN : Last Called Colum Number
   var LCCN = 0;
+  //executerInfo: it is the info about executer. about the recution,and status.
+  var executerInfo = {
+    counter: 0,
+    counterLastUpdatedTime: null,
+    faultDetector: [],
+    status: "stopped", //running or stopped
+    isWritable: true,
+    a: { recursion: 0, status: "stoped" },
+    b: { recursion: 0, status: "stoped" },
+    c: { recursion: 0, status: "stoped" },
+    d: { recursion: 0, status: "stoped" },
+    e: { recursion: 0, status: "stoped" },
+    //the status willbe enum of [stoped,recursion-exceed,running]
+  };
+  //executerRecursionHolder: whenever the any one of five executer exceeded the recurion limit ,that info will appear hear eg: [a,b,e],
+  var RecursionExceededExecuters = [];
+  //exicuterFaultDetectorReport: it is the report of unexpected exicuter is working or not
+  var exicuterFaultDetectorReport = [];
+
+  //executerFaultDetector: it will find unexpected exicuter is working or not
+  const executerFaultDetector = () => {
+    if (executerInfo.faultDetector.length > 50) {
+      const faultArray = executerInfo.faultDetector;
+      executerInfo.faultDetector = [];
+      let dupArra = [];
+      for (let i = 0; i < faultArray.length; i++) {
+        const item = faultArray[i];
+        const found = dupArra.find((e) => e === item);
+        if (found) {
+          exicuterFaultDetectorReport.push("fault");
+        }
+      }
+    }
+  };
+  //executableDataCreator: it creating whatsappPayloads based on available data in database
   const executableDataCreator = (data) => {
     const alertId = data._id;
     if (data.data_source === "DYNAMIC") {
@@ -2736,76 +2770,138 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
     }
   };
   //executerCallback: to fillthe executerErrorBucket;
-  const executerCallback = (okData, notOkData, finalMessage) => {
+  const executerCallback = (okData, notOkData, finalMessage, execId) => {
     if (okData) {
       proccessedDataContainer.push(okData);
-    } else if (notOkData) {
+    }
+    if (notOkData) {
       //executerErrorBucket : this feature not yet avaible
-      // executerErrorBucket.push(notOkData);
-      proccessedDataContainer.push(notOkData);
+      executerErrorBucket.push(notOkData);
+      // proccessedDataContainer.push(notOkData);
     }
     if (finalMessage) {
       exicutionCompletedContainerItems.push(finalMessage);
     }
-    executer();
+    executer(execId);
   };
   //calling whatsAppApi
-  const executer = () => {
-    
-    if (EDCLength > 0 && LCCN < EDCLength) {
-    console.log('.............................misssing fouder............in..........................');
-
-      const item = exicutableDataContainer[LCCN];
-      const plaloadsLength = item.payloads.length;
-      const nextIndex = item.nextIndex ? item.nextIndex : 0;
-      const totalPayloads = item.totalPayloads;
-      const countOfCompleted = item.countOfCompleted
-        ? item.countOfCompleted
-        : 0;
-      if (plaloadsLength > 0 && nextIndex < plaloadsLength) {
-        let alertId = item.alertId;
-        let payload = item.payloads[nextIndex];
-        exicutableDataContainer[LCCN].nextIndex = nextIndex + 1;
-        exicutableDataContainer[LCCN].countOfCompleted = countOfCompleted + 1;
-        // final message will helped for the database updation of that alert as it is completed
-        let finalMessage = null;
-        if (countOfCompleted + 1 == totalPayloads) {
-          finalMessage = "completed";
-          exicutableDataContainer.splice(LCCN, 1);
-        } else {
-          finalMessage = null;
-        }
-        if (LCCN + 1 < EDCLength) {
-          LCCN++;
-        } else if (LCCN + 1 == EDCLength) {
-          LCCN = 0;
-        } else if (LCCN + 1 > EDCLength) {
-          LCCN = 0;
-        }
-        //accepting callback with params okData and notOkData
-        whatsAppApiCaller(payload, alertId, finalMessage, executerCallback);
+  const executer = (execId) => {
+    if (
+      exicutableDataContainer.length > 0 &&
+      LCCN < exicutableDataContainer.length
+    ) {
+      const currentExecInfo = executerInfo;
+      let thisExicuterIfo = currentExecInfo[execId];
+      if (thisExicuterIfo.recursion === 200) {
+        executerInfo[execId].status = "recursion-exceed";
+        RecursionExceededExecuters.push(execId);
       } else {
-        if (plaloadsLength <= 0) {
-          exicutableDataContainer.splice(LCCN, 1);
-        } else if (nextIndex > plaloadsLength) {
-          systemErrorReporterOnLocal(
-            "executer",
-            "nextIndex exeeded the plaloadsLength"
+        const item = exicutableDataContainer[LCCN];
+        const plaloadsLength = item.payloads.length;
+        const nextIndex = item.nextIndex ? item.nextIndex : 0;
+        const totalPayloads = item.totalPayloads;
+        const countOfCompleted = item.countOfCompleted
+          ? item.countOfCompleted
+          : 0;
+        if (plaloadsLength > 0 && nextIndex < plaloadsLength) {
+          let alertId = item.alertId;
+          let payload = item.payloads[nextIndex];
+          exicutableDataContainer[LCCN].nextIndex = nextIndex + 1;
+          exicutableDataContainer[LCCN].countOfCompleted = countOfCompleted + 1;
+          // final message will helped for the database updation of that alert as it is completed
+          let finalMessage = null;
+          if (countOfCompleted + 1 == totalPayloads) {
+            finalMessage = "completed";
+            exicutableDataContainer.splice(LCCN, 1);
+          } else {
+            finalMessage = null;
+          }
+          if (LCCN + 1 < exicutableDataContainer.length) {
+            LCCN++;
+          } else if (LCCN + 1 == exicutableDataContainer.length) {
+            LCCN = 0;
+          } else if (LCCN + 1 > exicutableDataContainer.length) {
+            LCCN = 0;
+          }
+          executerInfo.counter = currentExecInfo.counter + 1;
+          executerInfo.counterLastUpdatedTime = Date.now();
+          executerInfo.faultDetector.push(currentExecInfo.counter);
+          executerInfo[execId].recursion = thisExicuterIfo.recursion + 1;
+          if (thisExicuterIfo.status !== "running") {
+            executerInfo[execId].status = "running";
+          }
+          //accepting callback with params okData and notOkData
+          whatsApp.whatsAppApiCaller(
+            payload,
+            alertId,
+            finalMessage,
+            execId,
+            executerCallback
           );
-          exicutableDataContainer.splice(LCCN, 1);
+        } else {
+          if (plaloadsLength <= 0) {
+            exicutableDataContainer.splice(LCCN, 1);
+          } else if (nextIndex > plaloadsLength) {
+            systemErrorReporterOnLocal(
+              "executer",
+              "nextIndex exeeded the plaloadsLength"
+            );
+            exicutableDataContainer.splice(LCCN, 1);
+          }
         }
       }
     } else {
-    console.log('.............................misssing fouder...........out...........................');
-
-      if (LCCN >= EDCLength) {
-        systemErrorReporterOnLocal("executer", "LCCN exeeded the EDCLength");
+      if (exicutableDataContainer.length <= 0) {
+        executerInfo[execId].status = "stoped";
+      }
+      if (LCCN >= exicutableDataContainer.length) {
+        systemErrorReporterOnLocal(
+          "executer",
+          "LCCN exeeded the exicutableDataContainer.length"
+        );
       }
     }
   };
   //runExicuter: it calls exeCuter . it is initializer of exicution stage
   const runExicuter = () => {
-    executer();
+    if (exicutableDataContainer.length > 0) {
+      let isNewInitializing = true;
+      let array = [];
+      if (executerInfo["a"].status !== "stoped") {
+        array.push("a");
+      } else if (executerInfo["b"].status !== "stoped") {
+        array.push("b");
+      } else if (executerInfo["c"].status !== "stoped") {
+        array.push("c");
+      } else if (executerInfo["d"].status !== "stoped") {
+        array.push("d");
+      } else if (executerInfo["e"].status !== "stoped") {
+        array.push("e");
+      }
+      if (array.length > 0) {
+        isNewInitializing = false;
+      }
+      if (isNewInitializing) {
+        const arr = ["a", "b", "c", "d", "e"];
+        for (let i = 0; i < arr.length; i++) {
+          executer(arr[i]);
+        }
+      } else {
+        if (executerInfo.status !== "running") {
+          executerInfo.status = "running";
+        }
+        if (RecursionExceededExecuters.length > 0) {
+          for (let i = 0; i < RecursionExceededExecuters.length; i++) {
+            executerInfo[RecursionExceededExecuters[i]] = {
+              recursion: 0,
+              status: "running",
+            };
+            executer(RecursionExceededExecuters[i]);
+          }
+          RecursionExceededExecuters = [];
+        }
+      }
+    }
   };
   //lister : handling whole the system by callin fuctions on intervels
   const linstener = async () => {
@@ -2816,12 +2912,17 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
           "====================================================================================================",
         listnerCounter,
         exicutableDataContainer,
+        proccessedDataContainerLength: proccessedDataContainer.length,
+        // proccessedDataContainer,
+        exicutionCompletedContainerItems,
+        executerErrorBucket,
+        executerInfo,
+        exicuterFaultDetectorReport,
       });
       listnerCounter++;
       loadAlerts();
-      if (exicutableDataContainer.length > 0) {
-        runExicuter();
-      }
+      runExicuter();
+      executerFaultDetector();
     }, 500);
   };
   const requestManager = async () => {

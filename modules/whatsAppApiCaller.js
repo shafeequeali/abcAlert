@@ -1,7 +1,10 @@
-module.exports.whatsAppApiCaller = async (
+const axios = require("axios");
+
+module.exports.whatsAppApiCaller = (
   data,
   alertId,
   finalMessage,
+  execId,
   callback
 ) => {
   const url =
@@ -51,29 +54,38 @@ module.exports.whatsAppApiCaller = async (
       },
     },
   };
-  try {
-    let wRes = await axios({
-      url: url,
-      method: "post",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization:
-          "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-      },
-      data: JSON.stringify(whatsappBody),
-      // timeout: 500,
-    });
-    const track = {
-      status: "SUCCESS",
-      res_data: JSON.stringify(wRes.data ? wRes.data : "noREsponse"),
-      ph,
-      alertId,
-    };
-    //callback params in order of (okData,NotOkData,finalMessage)
-    callback(track, null, finalMessage ? alertId : null);
-  } catch (err) {
-    try {
-      let wRes = await axios({
+
+  axios({
+    url: url,
+    method: "post",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization:
+        "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
+    },
+    data: JSON.stringify(whatsappBody),
+    // timeout: 500,
+  })
+    .then((data2) => {
+      const track = {
+        status: "SUCCESS",
+        res_data: JSON.stringify(data2.data ? data2.data : "noREsponse"),
+        ph: data.phone_number,
+        alertId,
+      };
+      //callback params in order of (okData,NotOkData,finalMessage,execId)
+      callback(track, null, finalMessage ? alertId : null, execId);
+      console.log(
+        ".............................misssing fouder............try-then.........................."
+      );
+    })
+    .catch(async (err) => {
+      await new Promise((resolve) =>
+        setTimeout(() => {
+          resolve();
+        }, 500)
+      );
+      axios({
         url: url,
         method: "post",
         headers: {
@@ -83,24 +95,33 @@ module.exports.whatsAppApiCaller = async (
         },
         data: JSON.stringify(whatsappBody),
         // timeout: 500,
-      });
-      const track = {
-        status: "SUCCESS",
-        res_data: JSON.stringify(wRes.data ? wRes.data : "noREsponse"),
-        ph,
-        alertId,
-      };
-      //callback params in order of (okData,NotOkData,finalMessage)
-      callback(track, null, finalMessage ? alertId : null);
-    } catch (err2) {
-      const NotOkData = {
-        status: "FAILED",
-        alertId,
-        message: "wasFinal",
-        data,
-      };
-      //callback params in order of (okData,NotOkData)
-      callback(null, NotOkData, finalMessage ? alertId : null);
-    }
-  }
+      })
+        .then((data3) => {
+          const track = {
+            status: "SUCCESS",
+            res_data: JSON.stringify(data3.data ? data3.data : "noREsponse"),
+            ph: data.phone_number,
+            alertId,
+          };
+          //callback params in order of (okData,NotOkData,finalMessage,execId)
+          callback(track, null, finalMessage ? alertId : null, execId);
+          console.log(
+            ".............................misssing fouder............try-then.........................."
+          );
+        })
+        .catch(async (err2) => {
+          const NotOkData = {
+            status: "FAILED",
+            alertId,
+            message: finalMessage ? "wasFinal" : "",
+            data,
+          };
+          //callback params in order of (okData,NotOkData,finalMessage,execId)
+          callback(null, NotOkData, finalMessage ? alertId : null, execId);
+          console.log(
+            ".............................misssing fouder............catch.........................."
+          );
+          console.log(err2);
+        });
+    });
 };
