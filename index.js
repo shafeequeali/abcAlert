@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 const alertRoutes = require("./routes/alertRoute");
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(
@@ -20,7 +20,7 @@ app.use(
   })
 );
 app.use("/alert", alertRoutes);
-app.use(express.static('public'))
+app.use(express.static("public"));
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 let username = "ali";
