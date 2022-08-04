@@ -105,11 +105,8 @@ module.exports.whatsAppApiCaller = async (
           };
           //callback params in order of (okData,NotOkData,finalMessage,execId)
           callback(track, null, finalMessage ? alertId : null, execId);
-          console.log(
-            ".............................misssing fouder............try-then.........................."
-          );
         })
-        .catch(async (err2) => {
+        .catch((err2) => {
           const NotOkData = {
             status: "FAILED",
             alertId,
@@ -120,9 +117,7 @@ module.exports.whatsAppApiCaller = async (
           };
           //callback params in order of (okData,NotOkData,finalMessage,execId)
           callback(null, NotOkData, finalMessage ? alertId : null, execId);
-          console.log(
-            ".............................misssing fouder............catch.........................."
-          );
+
           console.log(err2);
         });
     });

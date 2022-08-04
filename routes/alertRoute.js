@@ -676,1912 +676,7 @@ router.post("/sendAlert/:id", (req, res) => {
       res.status(404).json(err);
     });
 });
-//exicution asycronously
-router.post("/sendAlert_csv/:id", async (req, res) => {
-  const TAG = "sendAlert_csv";
-  const dataBaseTrackUpdate = (id, track, callback) => {
-    // let track = {
-    //     index: index,
-    //     status: 'SUCCESS'
-    // }
-    console.log({
-      tag: TAG + " dataBaseTrackUpdate-1",
-    });
-    application
-      .findByIdAndUpdate(id, {
-        $push: {
-          whatsapp_alert_track: track,
-        },
-      })
-      .then((data) => {
-        callback();
-        console.log({
-          tag: TAG + " dataBaseTrackUpdat----",
-          // data
-        });
-      })
-      .catch((err) => {
-        callback();
-        console.log({
-          tag: TAG + " dataBaseTrackUpdatie-----",
-          err,
-        });
-      });
-  };
-  const callWhatsappApi = async (ph, data, id, track, callback) => {
-    let whatsappBody = {
-      storage: "full",
-      destination: {
-        integrationId: "60be3bbfaa6e4100d373d7ce",
-        destinationId: ph,
-        // destinationId: '918301848679',
-      },
-      author: {
-        name: "support@moplet.com",
-        email: "Moplet",
-        role: "appMaker",
-      },
-      messageSchema: "whatsapp",
-      message: {
-        type: "template",
-        template: {
-          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-          name: "error_notification",
-          language: {
-            policy: "deterministic",
-            code: "en",
-          },
-          components: [
-            {
-              type: "body",
-              parameters: [
-                {
-                  type: "text",
-                  text: data.name,
-                },
-                {
-                  type: "text",
-                  text: data.email_id,
-                },
-                {
-                  type: "text",
-                  text: data.roll_number,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    };
-    console.log({
-      tag: TAG + " sentWhatsAppAlert-433",
-    });
-
-    try {
-      return await axios({
-        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-        },
-        data: JSON.stringify(whatsappBody),
-      });
-    } catch (err) {
-      return "err";
-    }
-
-    // .then(response => {
-    //     console.log('...................callWhatsappApi........res....');
-    //     dataBaseTrackUpdate(id, track, callback)
-    // })
-    // .catch(err => {
-    //     console.log('...................callWhatsappApi........err....');
-
-    //     dataBaseTrackUpdate(id, track, callback)
-    // })
-  };
-
-  application
-    .findByIdAndUpdate(req.params.id, {
-      alert_status: "PROCESSING",
-    })
-    .then((data) => {
-      application
-        .findById(req.params.id)
-        .then((data) => {
-          if (data.data_source === "DYNAMIC") {
-            let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-            const bindingData = JSON.parse(data.binding_data);
-            // console.log({
-            //     tag: TAG,
-            //     data,
-            //     bindingData
-            // });
-            let results = [];
-            if (isDataAvailabe) {
-              let counter = 0;
-              fs.createReadStream(data.csv_file)
-                .pipe(csv())
-                .on("data", (csvData) => {
-                  new Promise(async (resolve, reject) => {
-                    results.push(data);
-                    // console.log(csvData);
-                    let whatsappParams = {
-                      name: "",
-                      email_id: "",
-                      roll_number: "",
-                      phone_number: "",
-                    };
-                    let whatsappapicall;
-                    for (const key in whatsappParams) {
-                      let type = bindingData[key].type;
-                      if (type === "csv_data") {
-                        // console.log('....................csvdata.........');
-                        let csv_key = bindingData[key].value;
-                        whatsappParams[key] = csvData[csv_key]
-                          ? csvData[csv_key]
-                          : "";
-                      } else if (type === "type_data") {
-                        // console.log('....................type_data.........');
-                        whatsappParams[key] = data[key] ? data[key] : "";
-                      }
-                    }
-                    // console.log(whatsappParams);
-                    let errFound =
-                      utility.whatsappParamsValidation(whatsappParams);
-                    const callback = () => {
-                      counter = counter + 1;
-                    };
-                    if (!errFound) {
-                      const track = {
-                        index: counter,
-                        status: "SUCCESS",
-                      };
-
-                      whatsappapicall = await callWhatsappApi(
-                        whatsappParams.phone_number,
-                        whatsappParams,
-                        req.params.id,
-                        track,
-                        callback
-                      );
-                    } else {
-                      const track = {
-                        index: counter,
-                        status: "FAILED",
-                      };
-
-                      whatsappapicall = await callWhatsappApi(
-                        whatsappParams.phone_number,
-                        whatsappParams,
-                        req.params.id,
-                        track,
-                        callback
-                      );
-                    }
-                    // counter = counter + 1
-                    // ph, data, id, track, callback
-                    // console.log({
-                    //     tag: 'errFound',
-                    //     errFound
-                    // });
-                    // console.log({
-                    //     tag: '............on data.....csv',
-                    //     counter
-                    // });
-                    if (whatsappapicall === "err") {
-                      reject("err");
-                    } else {
-                      resolve(whatsappapicall);
-                    }
-                  })
-                    .then((res) => {
-                      const track = {
-                        index: counter,
-                        status: "SUCCESS",
-                      };
-                      let callback2 = () => {
-                        console.log("-----------line 822------------");
-                      };
-                      dataBaseTrackUpdate(req.params.id, track, callback2);
-                    })
-                    .catch((err) => {
-                      const track = {
-                        index: counter,
-                        status: "FAILED",
-                      };
-                      let callback2 = () => {
-                        console.log("-----------line 822------------");
-                      };
-                      dataBaseTrackUpdate(req.params.id, track, callback2);
-                    });
-                })
-                .on("end", () => {
-                  // console.log({
-                  //     tag: '.............on end---',
-                  //     counter,
-                  //     length: results.length
-                  // });
-                  application
-                    .findByIdAndUpdate(req.params.id, {
-                      csv_data_length: results.length,
-                    })
-                    .then((data) => {
-                      console.log({
-                        tag: TAG + "at status update",
-                        data,
-                      });
-                    })
-                    .catch((err) => {
-                      console.log({
-                        tag: TAG + "at status update",
-                        err,
-                      });
-                    });
-                });
-            } else {
-              res.status(404).json({
-                message: "csv fle not found",
-              });
-            }
-          } else if (data.data_source === "STATIC") {
-            res.send("STATIC NOT WORKING");
-          }
-        })
-        .catch((err) => {
-          res.status(404).json(err);
-        });
-
-      // console.log({
-      //     tag: TAG + 'at status update-PROCESSING',
-      //     // data
-      // });
-      res.json({
-        message: "processing",
-      });
-    })
-    .catch((err) => {
-      console.log({
-        tag: TAG + "at status update-PROCESSING",
-        err,
-      });
-      res.json({
-        message: "processing--failed",
-      });
-    });
-});
-//exicution more syncronously
-router.post("/sendAlert_csv2/:id", async (req, res) => {
-  const TAG = "sendAlert_csv2";
-  const dataBaseTrackUpdate = async (id, track) => {
-    // let track = {
-    //     index: index,
-    //     status: 'SUCCESS'
-    // }
-    console.log({
-      tag: TAG + " dataBaseTrackUpdate-1",
-    });
-    let trackUpdate = await application.findByIdAndUpdate(id, {
-      $push: {
-        whatsapp_alert_track: track,
-      },
-    });
-    console.log({
-      tag: TAG + " dataBaseTrackUpdate-2",
-      trackUpdateLenght: trackUpdate.length,
-    });
-  };
-  const callWhatsappApi = async (ph, data) => {
-    let whatsappBody = {
-      storage: "full",
-      destination: {
-        integrationId: "60be3bbfaa6e4100d373d7ce",
-        destinationId: ph,
-        // destinationId: '918301848679',
-      },
-      author: {
-        name: "support@moplet.com",
-        email: "Moplet",
-        role: "appMaker",
-      },
-      messageSchema: "whatsapp",
-      message: {
-        type: "template",
-        template: {
-          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-          name: "error_notification",
-          language: {
-            policy: "deterministic",
-            code: "en",
-          },
-          components: [
-            {
-              type: "body",
-              parameters: [
-                {
-                  type: "text",
-                  text: data.name,
-                },
-                {
-                  type: "text",
-                  text: data.email_id,
-                },
-                {
-                  type: "text",
-                  text: data.roll_number,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    };
-    console.log({
-      tag: TAG + " sentWhatsAppAlert-43344",
-    });
-
-    try {
-      let wRes = await axios({
-        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-        },
-        data: JSON.stringify(whatsappBody),
-      });
-      const track = {
-        index: 99,
-        status: "SUCCESS",
-      };
-      await dataBaseTrackUpdate(req.params.id, track);
-      console.log({
-        tag: TAG + " callWhatsappApi----DATA",
-        data: wRes.data,
-      });
-    } catch (err) {
-      const track = {
-        index: 99,
-        status: "FAILED",
-      };
-      await dataBaseTrackUpdate(req.params.id, track);
-      console.log({
-        tag: TAG + " callWhatsappApi---caic-errr",
-        err,
-      });
-    }
-  };
-
-  application
-    .findByIdAndUpdate(req.params.id, {
-      alert_status: "PROCESSING",
-    })
-    .then((data) => {
-      application
-        .findById(req.params.id)
-        .then((data) => {
-          if (data.data_source === "DYNAMIC") {
-            let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-            const bindingData = JSON.parse(data.binding_data);
-
-            let results = [];
-            if (isDataAvailabe) {
-              let counter = 0;
-              fs.createReadStream(data.csv_file)
-                .pipe(csv())
-                .on("data", (csvData) => {
-                  results.push(csvData);
-                })
-                .on("end", async () => {
-                  await application
-                    .findByIdAndUpdate(req.params.id, {
-                      csv_data_length: results.length,
-                    })
-                    .then((data) => {
-                      console.log({
-                        tag: TAG + "at status csv_data_length---data",
-                        // data,
-                      });
-                    })
-                    .catch((err) => {
-                      console.log({
-                        tag: TAG + "at status csv_data_length--err",
-                        err,
-                      });
-                    });
-
-                  new Promise(async (resolve, reject) => {
-                    // results.push(data)
-                    // console.log(csvData);
-                    for (const csvData of results) {
-                      let whatsappParams = {
-                        name: "",
-                        email_id: "",
-                        roll_number: "",
-                        phone_number: "",
-                      };
-                      let whatsappapicall;
-                      for (const key in whatsappParams) {
-                        let type = bindingData[key].type;
-                        if (type === "csv_data") {
-                          // console.log('....................csvdata.........');
-                          let csv_key = bindingData[key].value;
-                          whatsappParams[key] = csvData[csv_key]
-                            ? csvData[csv_key]
-                            : "";
-                        } else if (type === "type_data") {
-                          // console.log('....................type_data.........');
-                          whatsappParams[key] = data[key] ? data[key] : "";
-                        }
-                      }
-                      // console.log(whatsappParams);
-                      let errFound =
-                        utility.whatsappParamsValidation(whatsappParams);
-
-                      if (!errFound) {
-                        whatsappapicall = await callWhatsappApi(
-                          whatsappParams.phone_number,
-                          whatsappParams
-                        );
-                      } else {
-                        const track = {
-                          index: counter,
-                          status: "FAILED",
-                        };
-                        await dataBaseTrackUpdate(req.params.id, track);
-                      }
-                      counter = counter + 1;
-                    }
-
-                    console.log(
-                      "-----------------------------------{{{{{{{{{{{{{{{{{{{{{{{]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
-                    );
-                    resolve();
-                  })
-                    .then((res) => {
-                      application.findByIdAndUpdate(req.params.id, {
-                        alert_status: "PROCESSED",
-                      });
-                    })
-                    .catch((err) => {
-                      application.findByIdAndUpdate(req.params.id, {
-                        alert_status: "PROCESSED",
-                      });
-                    });
-                });
-            } else {
-              res.status(404).json({
-                message: "csv fle not found",
-              });
-            }
-          } else if (data.data_source === "STATIC") {
-            res.send("STATIC NOT WORKING");
-          }
-        })
-        .catch((err) => {
-          res.status(404).json(err);
-        });
-
-      res.json({
-        message: "processing",
-      });
-    })
-    .catch((err) => {
-      console.log({
-        tag: TAG + "at status update-PROCESSING",
-        err,
-      });
-      res.json({
-        message: "processing--failed",
-      });
-    });
-});
-
-//exicution at on-data callback
-router.post("/sendAlert_csv3/:id", async (req, res) => {
-  const TAG = "sendAlert_csv3";
-  // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
-  // elements {id:23423132,status:running}
-  let masterArray = [];
-  const dataBaseTrackUpdate = async (id, track) => {
-    // let track = {
-    //     index: index,
-    //     status: 'SUCCESS'
-    // }
-    console.log({
-      tag: TAG + " dataBaseTrackUpdate-1",
-    });
-    await application
-      .findByIdAndUpdate(id, {
-        $push: {
-          whatsapp_alert_track: track,
-        },
-      })
-      .then((data) => {
-        console.log({
-          tag: TAG + " dataBaseTrackUpdat----",
-          // data
-        });
-      })
-      .catch((err) => {
-        console.log({
-          tag: TAG + " dataBaseTrackUpdatie-----",
-          err,
-        });
-      });
-  };
-  const callWhatsappApi = async (ph, data) => {
-    let whatsappBody = {
-      storage: "full",
-      destination: {
-        integrationId: "60be3bbfaa6e4100d373d7ce",
-        destinationId: ph,
-        // destinationId: '918301848679',
-      },
-      author: {
-        name: "support@moplet.com",
-        email: "Moplet",
-        role: "appMaker",
-      },
-      messageSchema: "whatsapp",
-      message: {
-        type: "template",
-        template: {
-          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-          name: "error_notification",
-          language: {
-            policy: "deterministic",
-            code: "en",
-          },
-          components: [
-            {
-              type: "body",
-              parameters: [
-                {
-                  type: "text",
-                  text: data.name,
-                },
-                {
-                  type: "text",
-                  text: data.email_id,
-                },
-                {
-                  type: "text",
-                  text: data.roll_number,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    };
-    console.log({
-      tag: TAG + " sentWhatsAppAlert-433",
-    });
-
-    try {
-      return await axios({
-        url: "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification",
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-        },
-        data: JSON.stringify(whatsappBody),
-      });
-    } catch (err) {
-      return err;
-    }
-  };
-  const finalizeAfterHundreds = (uuid) => {
-    // we have two status in maserArray elements one is <running> and other is <completed>
-    const elementIndex = masterArray.findIndex((e) => e.id === uuid);
-    if (elementIndex >= 0) {
-      const updation = {
-        id: uuid,
-        status: "completed",
-        //   alerts: results,
-      };
-      masterArray.splice(elementIndex, 1, updation);
-    } else {
-      console.log({
-        tag: TAG + "finalizeAfterHundreds",
-        message: "error:: could not find the matched element from master array",
-      });
-    }
-  };
-  const exicuteAlerts = (results = [], bindingData, data, arrayUuid) => {
-    new Promise(async (resolve, reject) => {
-      let counter = 0;
-      for (const csvData of results) {
-        let whatsappParams = {
-          name: "",
-          email_id: "",
-          roll_number: "",
-          phone_number: "",
-        };
-        let whatsappapicall;
-        for (const key in whatsappParams) {
-          let type = bindingData[key].type;
-          if (type === "csv_data") {
-            // console.log('....................csvdata.........');
-            let csv_key = bindingData[key].value;
-            whatsappParams[key] = csvData[csv_key] ? csvData[csv_key] : "";
-          } else if (type === "type_data") {
-            // console.log('....................type_data.........');
-            whatsappParams[key] = data[key] ? data[key] : "";
-          }
-        }
-        // console.log(whatsappParams);
-        let errFound = utility.whatsappParamsValidation(whatsappParams);
-
-        if (!errFound) {
-          const track = {
-            index: counter,
-            status: "SUCCESS",
-          };
-
-          whatsappapicall = await callWhatsappApi(
-            whatsappParams.phone_number,
-            whatsappParams
-          );
-          await dataBaseTrackUpdate(req.params.id, track);
-        } else {
-          const track = {
-            index: counter,
-            status: "FAILED",
-          };
-          await dataBaseTrackUpdate(req.params.id, track);
-        }
-        counter = counter + 1;
-      }
-      resolve();
-    })
-      .then((res) => {
-        if (arrayUuid) {
-          finalizeAfterHundreds(arrayUuid, "completed");
-        }
-        console.log({
-          tag: TAG + " exicuteAlerts()",
-          message: "successfully completed hundred with completed",
-        });
-      })
-      .catch((err) => {
-        if (arrayUuid) {
-          finalizeAfterHundreds(arrayUuid, "completed");
-        }
-        console.log({
-          tag: TAG + " exicuteAlerts()",
-          message: "successfully completed hundred with crashed",
-        });
-      });
-  };
-  const masterArrayStatusChecker = () => {
-    const found = masterArray.find((e) => e.status === "running");
-    let processCompleted = false;
-    if (found) {
-      processCompleted = false;
-    } else {
-      processCompleted = true;
-    }
-    return processCompleted;
-  };
-
-  application
-    .findByIdAndUpdate(req.params.id, {
-      alert_status: "PROCESSING",
-    })
-    .then((data) => {
-      application
-        .findById(req.params.id)
-        .then((data) => {
-          if (data.data_source === "DYNAMIC") {
-            let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
-            const bindingData = JSON.parse(data.binding_data);
-            let results = [];
-            if (isDataAvailabe) {
-              fs.createReadStream(data.csv_file)
-                .pipe(csv())
-                .on("data", (csvData) => {
-                  if (results.length >= 10) {
-                    let arrayUuid = `${Date.now()} + ${masterArray.length}`;
-                    masterArray.push({
-                      id: arrayUuid,
-                      status: "running",
-                      //   alerts: results,
-                    });
-                    exicuteAlerts(results, bindingData, data, arrayUuid);
-                    results = [];
-                    console.log(
-                      `------------------on data---new array number------${masterArray.length}------------------------`
-                    );
-                  } else {
-                    results.push(csvData);
-                  }
-                })
-                .on("end", async () => {
-                  const lengthOfResultArray = results.length;
-                  const lengthOfMasterArray = masterArray.length;
-                  const totalDataInMasterArray = lengthOfMasterArray * 10;
-                  const totalLengthOfCsvData =
-                    totalDataInMasterArray + lengthOfResultArray;
-                  application
-                    .findByIdAndUpdate(req.params.id, {
-                      csv_data_length: totalLengthOfCsvData,
-                    })
-                    .then((data) => {
-                      console.log({
-                        tag: TAG + "at csv_data_length update",
-                        // data,
-                      });
-                    })
-                    .catch((err) => {
-                      console.log({
-                        tag: TAG + "at csv_data_length update",
-                        err,
-                      });
-                    });
-                  if (lengthOfResultArray > 0) {
-                    let arrayUuid2 = `${Date.now()} + ${masterArray.length}`;
-                    masterArray.push({
-                      id: arrayUuid2,
-                      status: "running",
-                      //   alerts: results,
-                    });
-                    exicuteAlerts(results, bindingData, data, arrayUuid2);
-                  }
-                  let n = 1;
-                  while (n === 2) {
-                    let processCompleted = masterArrayStatusChecker;
-                    if (processCompleted) {
-                      application.findByIdAndUpdate(req.params.id, {
-                        alert_status: "PROCESSED",
-                      });
-                      n++;
-                    } else {
-                      n = 1;
-                    }
-                  }
-                });
-            } else {
-              res.status(404).json({
-                message: "csv fle not found",
-              });
-            }
-          } else if (data.data_source === "STATIC") {
-            res.send("STATIC NOT WORKING");
-          }
-        })
-        .catch((err) => {
-          res.status(404).json(err);
-        });
-
-      res.json({
-        message: "processing",
-      });
-    })
-    .catch((err) => {
-      console.log({
-        tag: TAG + "at status update-PROCESSING",
-        err,
-      });
-      res.json({
-        message: "processing--failed",
-      });
-    });
-});
-// 5 paralel and aplited (multiSystem)
-router.post("/sendAlert_csv4____/:id", async (req, res) => {
-  const TAG = "sendAlert_csv4";
-  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
-
-  // const config = new systemConfig({ total_system: 5, availble_system: 5 });
-  // config.save();
-  let isSystemAvailbale = false;
-  const systemConfigration = await systemConfig.find();
-  // const queue = await queueData.find({});
-  if (systemConfigration.length) {
-    const availble_system = systemConfigration[0].availble_system;
-    console.log({
-      tag: TAG + " onInitial- systemConfigration-before updation",
-      systemConfigration,
-    });
-    if (availble_system > 0) {
-      await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
-        availble_system: systemConfigration[0].availble_system - 1,
-      });
-      isSystemAvailbale = true;
-      console.log(".......onInitial......availble_system >0........");
-    } else {
-      isSystemAvailbale = false;
-      let newQueue = await new queueData({
-        alert: { timestamp: Date.now(), alertId: req.params.id },
-      });
-      await newQueue.save();
-      try {
-        await application.findByIdAndUpdate(req.params.id, {
-          alert_status: "PROCESSING",
-        });
-      } catch (err) {
-        await application.findByIdAndUpdate(req.params.id, {
-          alert_status: "PROCESSING",
-        });
-      }
-      console.log("........onInitial.....availble_system <0...........");
-      console.log({
-        tag: TAG + " onInitial-alertInqueue-after upldation",
-        queue: await queueData.find({}),
-      });
-    }
-  }
-  // console.log({
-  //   tag: TAG,
-  //   systemConfigration: await systemConfig.find(),
-  //   queue: await queueData.find({}),
-  // });
-  // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
-  // elements in masterArray {id:23423132,status:running}
-  let masterArray = [];
-  const dataBaseTrackUpdate = async (id, track) => {
-    // let track = {
-    //     index: index,
-    //     status: 'SUCCESS'
-    // }
-    console.log({
-      tag: TAG + " dataBaseTrackUpdate-1",
-    });
-    await application
-      .findByIdAndUpdate(id, {
-        $push: {
-          whatsapp_alert_track: track,
-        },
-      })
-      .then((data) => {
-        console.log({
-          tag: TAG + " dataBaseTrackUpdat----",
-          // data
-        });
-      })
-      .catch((err) => {
-        console.log({
-          tag: TAG + " dataBaseTrackUpdatie-----",
-          err,
-        });
-      });
-  };
-  const callAxios = async (body, alertId, count) => {
-    const ulrOld =
-      "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification";
-    const url2 =
-      "https://api.alpha.panel.mapapi.io/api/whatsapp/60ba619cdc52f500d37e810f/notification";
-    const url =
-      "https://alpha.api.panel.mapapi.io/whatsapp/60ba619cdc52f500d37e810f/notification";
-    try {
-      let wRes = await axios({
-        url: url,
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-        },
-        data: JSON.stringify(body),
-        // timeout: 500,
-      });
-      const track = {
-        index: count,
-        status: "SUCCESS",
-        res_data: JSON.stringify(wRes.data ? wRes.data : "noREsponse"),
-      };
-      await dataBaseTrackUpdate(alertId, track);
-      console.log({
-        tag: TAG + " callWhatsappApi----DATA",
-        data: wRes.data,
-      });
-    } catch (err) {
-      // const track = {
-      //   index: count,
-      //   status: "FAILED",
-      // };
-      // await dataBaseTrackUpdate(alertId, track);
-      console.log({
-        tag: TAG + " callWhatsappApi---caic-errr",
-        err,
-      });
-    }
-  };
-  const callWhatsappApi = async (ph, data, count = 0, alertId) => {
-    let whatsappBody = {
-      storage: "full",
-      destination: {
-        integrationId: "60be3bbfaa6e4100d373d7ce",
-        destinationId: ph,
-        // destinationId: '918301848679',
-      },
-      author: {
-        name: "support@moplet.com",
-        email: "Moplet",
-        role: "appMaker",
-      },
-      messageSchema: "whatsapp",
-      message: {
-        type: "template",
-        template: {
-          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-          name: "error_notification",
-          language: {
-            policy: "deterministic",
-            code: "en",
-          },
-          components: [
-            {
-              type: "body",
-              parameters: [
-                {
-                  type: "text",
-                  text: data.name,
-                },
-                {
-                  type: "text",
-                  text: data.email_id,
-                },
-                {
-                  type: "text",
-                  text: data.roll_number,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    };
-    console.log({
-      tag: TAG + " sentWhatsAppAlert-40000",
-    });
-    await callAxios(whatsappBody, alertId, count);
-    return count + 1;
-  };
-  const finalizeAfterHundreds = (uuid) => {
-    // we have two status in maserArray elements one is <running> and other is <completed>
-    const elementIndex = masterArray.findIndex((e) => e.id === uuid);
-    if (elementIndex >= 0) {
-      const updation = {
-        id: uuid,
-        status: "completed",
-      };
-      masterArray.splice(elementIndex, 1, updation);
-    } else {
-      console.log({
-        tag: TAG + "finalizeAfterHundreds",
-        message: "error:: could not find the matched element from master array",
-      });
-    }
-  };
-  const exicuteAlerts = (
-    results = [],
-    bindingData,
-    data,
-    arrayUuid,
-    alertId
-  ) => {
-    new Promise(async (resolve, reject) => {
-      let counter = 0;
-      for (const csvData of results) {
-        let whatsappParams = {
-          name: "",
-          email_id: "",
-          roll_number: "",
-          phone_number: "",
-        };
-        for (const key in whatsappParams) {
-          let type = bindingData[key].type;
-          if (type === "csv_data") {
-            // console.log('....................csvdata.........');
-            let csv_key = bindingData[key].value;
-            whatsappParams[key] = csvData[csv_key] ? csvData[csv_key] : "";
-          } else if (type === "type_data") {
-            // console.log('....................type_data.........');
-            whatsappParams[key] = data[key] ? data[key] : "";
-          }
-        }
-        // console.log(whatsappParams);
-        let errFound = utility.whatsappParamsValidation(whatsappParams);
-
-        if (!errFound) {
-          const track = {
-            index: counter,
-            status: "SUCCESS",
-          };
-          await new Promise((resolve) =>
-            setTimeout(() => {
-              resolve();
-            }, 500)
-          );
-          counter = await callWhatsappApi(
-            whatsappParams.phone_number,
-            whatsappParams,
-            counter,
-            alertId
-          );
-        } else {
-          const track = {
-            index: counter,
-            status: "FAILED",
-          };
-          await dataBaseTrackUpdate(alertId, track);
-        }
-        // counter = counter + 1;
-      }
-
-      if (arrayUuid) {
-        finalizeAfterHundreds(arrayUuid, "completed");
-      }
-      console.log({
-        tag: TAG + " exicuteAlerts()",
-        message: "successfully completed hundreds alerts",
-      });
-      console.log(
-        `&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&-count-${counter}&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&`
-      );
-      console.log(
-        "========================================[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]}}}}}}}}}}}}}}}}}}}}}"
-      );
-      resolve();
-    });
-  };
-  const masterArrayStatusChecker = () => {
-    const found = masterArray.find((e) => e.status == "running");
-    console.log("------------------masterArrayStatusChecker----------------");
-    console.log(found);
-    let processCompleted = false;
-    if (found) {
-      processCompleted = false;
-    } else {
-      processCompleted = true;
-    }
-    return processCompleted;
-  };
-
-  async function masterArrayLisnter(alertId) {
-    console.log("--------------------------before setInterval loop");
-    const inervel = setInterval(() => {
-      new Promise(async (resolve) => {
-        let processCompleted = masterArrayStatusChecker();
-        if (processCompleted) {
-          // clearInterval(inervel);
-          try {
-            let dbAlertUpdataion = await application.findByIdAndUpdate(
-              alertId,
-              {
-                alert_status: "PROCESSED",
-              }
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter-findByIdAndUpdate",
-              // dbAlertUpdataion,
-            });
-          } catch (err) {
-            console.log({
-              tag: TAG + " masterArrayLisnter-findByIdAndUpdate--err",
-              err,
-            });
-            //---retrying database updation
-            if (err) {
-              let dbAlertUpdataion = await application.findByIdAndUpdate(
-                req.params.id,
-                {
-                  alert_status: "PROCESSED",
-                }
-              );
-            }
-          }
-          console.log(
-            "--------------masterArrayLisnter ----1st-if---------------++++++++++++========------"
-          );
-          console.log({ processCompleted });
-          //clearing mastert array . it was the listening source of exicution of alerts wheather it is complete or not
-          masterArray = [];
-        } else {
-          console.log(
-            "--------------masterArrayLisnter---ist--esle---------------++++++++++++========------"
-          );
-        }
-        if (processCompleted) {
-          const queue = await queueData.find({}).limit(3);
-          console.log(
-            "_______________________2nd if____________________masterArrayLisnter-queue"
-          );
-          console.log(
-            "__________________________2nd if_________________masterArrayLisnter-queue"
-          );
-
-          console.log({ tag: TAG + " masterArrayLisnter", queue });
-          if (queue.length > 0) {
-            const queueId = queue[0]._id;
-            await queueData.findByIdAndDelete(queueId);
-            runSystem(queue[0].alert.alertId);
-            console.log(
-              "++++++++++++++++++++++++masterArrayLisnter-letestSystemInfo- proccessing alert inqueue"
-            );
-            console.log(
-              "++++++++++++++++++++++++masterArrayLisnter-letestSystemInfo- proccessing alert inqueue"
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter--if queue-length",
-              SystemInfo: await systemConfig.find(),
-              queueInfo: await queueData.find({}),
-            });
-          } else {
-            const letestSystemInfo = await systemConfig.find();
-            const latestAvailableSystem = letestSystemInfo[0].availble_system;
-            console.log(
-              "=_____________________________masterArrayLisnter-letestSystemInfo-before system config updation"
-            );
-            console.log(
-              "=_____________________________masterArrayLisnter-letestSystemInfo-before system config updation"
-            );
-            console.log({ tag: TAG + " masterArrayLisnter", letestSystemInfo });
-            if (latestAvailableSystem < letestSystemInfo[0].total_system) {
-              await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
-                availble_system: latestAvailableSystem + 1,
-              });
-            }
-            console.log(
-              "__________________________________masterArrayLisnter-letestSystemInfo--after system config updation"
-            );
-            console.log(
-              "__________________________________masterArrayLisnter-letestSystemInfo--after system config updation"
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter",
-              SystemInfo: await systemConfig.find(),
-              queueInfo: await queueData.find({}),
-            });
-            clearInterval(inervel);
-          }
-        }
-        resolve();
-      });
-    }, 2 * 1000);
-  }
-
-  const alertSplitPer = parseInt(process.env.SPLIT_ALERT_PER);
-  // runSystem function is the main function or initiator
-  const runSystem = async (alertId) => {
-    await application
-      .findByIdAndUpdate(alertId, {
-        alert_status: "PROCESSING",
-      })
-      .then((data) => {
-        application
-          .findById(alertId)
-          .then((data) => {
-            if (data.data_source === "DYNAMIC") {
-              let isDataAvailabe = data
-                ? data.csv_file
-                  ? true
-                  : false
-                : false;
-              const bindingData = JSON.parse(data.binding_data);
-              let results = [];
-              if (isDataAvailabe) {
-                fs.createReadStream(data.csv_file)
-                  .pipe(csv())
-                  .on("data", (csvData) => {
-                    results.push(csvData);
-                  })
-                  .on("end", () => {
-                    new Promise(async (resolve) => {
-                      let divides = [];
-                      for (let i = 0; i < results.length; i++) {
-                        divides.push(results[i]);
-
-                        if (divides.length >= alertSplitPer) {
-                          let arrayUuid = `${Date.now()}-${masterArray.length}`;
-                          masterArray.push({
-                            id: arrayUuid,
-                            status: "running",
-                          });
-                          exicuteAlerts(
-                            divides,
-                            bindingData,
-                            data,
-                            arrayUuid,
-                            alertId
-                          );
-                          divides = [];
-                        }
-                      }
-                      const lengthOfResultArray = results.length;
-                      const lengthOfMasterArray = masterArray.length;
-                      const lengthOfDivides = divides.length;
-                      console.log({
-                        lengthOfResultArray,
-                        lengthOfMasterArray,
-                        masterArray,
-                        lengthOfDivides,
-                      });
-                      await application
-                        .findByIdAndUpdate(alertId, {
-                          csv_data_length: lengthOfResultArray,
-                        })
-                        .then((data) => {
-                          console.log({
-                            tag: TAG + "at csv_data_length update",
-                            // data,
-                          });
-                        })
-                        .catch((err) => {
-                          console.log({
-                            tag: TAG + "at csv_data_length update",
-                            err,
-                          });
-                        });
-                      if (lengthOfDivides > 0) {
-                        let arrayUuid2 = `${Date.now()}-${
-                          masterArray.length + 1
-                        }`;
-                        masterArray.push({
-                          id: arrayUuid2,
-                          status: "running",
-                        });
-                        exicuteAlerts(
-                          divides,
-                          bindingData,
-                          data,
-                          arrayUuid2,
-                          alertId
-                        );
-                      }
-                      masterArrayLisnter(alertId);
-                      console.log(
-                        "-------------------------after-------------masterArrayLisnter-"
-                      );
-                      console.log({ masterArray });
-                      resolve();
-                    });
-                  });
-              } else {
-                console.log({
-                  tag: TAG + "runSystem-csv finder",
-                  message: "csv fle not found",
-                });
-                // res.status(404).json({
-                //   message: "csv fle not found",
-                // });
-              }
-            } else if (data.data_source === "STATIC") {
-              console.log({
-                tag: TAG + "runSystem-> appliction-type-chooser",
-                message: "STATIC NOT WORKING",
-              });
-              // res.send("STATIC NOT WORKING");
-            }
-          })
-          .catch((err) => {
-            console.log({
-              tag: TAG + "runSystem-application-finder -> ",
-              message: "cought err",
-              err,
-            });
-            // res.status(404).json(err);
-          });
-
-        // res.json({
-        //   message: "processing",
-        // });
-      })
-      .catch((err) => {
-        console.log({
-          tag: TAG + "runSystem-application-status updation -> ",
-          message: "cought err",
-          err,
-        });
-        // res.json({
-        //   message: "processing--failed",
-        // });
-      });
-  };
-
-  //starting initiation
-  if (isSystemAvailbale) {
-    runSystem(req.params.id);
-    res.json({ message: "proccessing" });
-  } else {
-    console.log({
-      tag: TAG + " available system is zero--then alert in queue",
-    });
-    res.json({ message: "proccessing" });
-  }
-});
-// multiSystem(5),with errBucket
-router.post("/sendAlert_csv5/:id", async (req, res) => {
-  const TAG = "sendAlert_csv5";
-  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
-  const alertSplitPer = parseInt(process.env.SPLIT_ALERT_PER);
-  const whatsApiCallTimeOut = parseInt(
-    process.env.WHATSAPP_API_CALL_TIME_OUT_LIMIT
-  );
-  const masterArrayListeningTimeIntervel = parseInt(
-    process.env.MASTER_ARRAY_LISTENING_TIME_INTERVEL_LIMIT
-  );
-  let errorBucket = []; //{whatsappBody:'',alertId:'',ph:''}
-  // we have two status in maserArray elements one is <running> and other is <completed> and <crashed>
-  // elements in masterArray structure {id:23423132,status:running}
-  let masterArray = [];
-  // const config = new systemConfig({ total_system: 5, availble_system: 5 });
-  // config.save();
-  let isSystemAvailbale = false;
-  const systemConfigration = await systemConfig.find();
-  // const queue = await queueData.find({});
-  if (systemConfigration.length) {
-    const availble_system = systemConfigration[0].availble_system;
-    console.log({
-      tag: TAG + " onInitial- systemConfigration-before updation",
-      systemConfigration,
-    });
-    if (availble_system > 0) {
-      await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
-        availble_system: systemConfigration[0].availble_system - 1,
-      });
-      isSystemAvailbale = true;
-      console.log(".......onInitial......availble_system >0........");
-    } else {
-      isSystemAvailbale = false;
-      let newQueue = await new queueData({
-        alert: { timestamp: Date.now(), alertId: req.params.id },
-      });
-      await newQueue.save();
-      try {
-        await application.findByIdAndUpdate(req.params.id, {
-          alert_status: "PROCESSING",
-        });
-      } catch (err) {
-        await application.findByIdAndUpdate(req.params.id, {
-          alert_status: "PROCESSING",
-        });
-      }
-      console.log("........onInitial.....availble_system <0...........");
-      console.log({
-        tag: TAG + " onInitial-alertInqueue-after upldation",
-        queue: await queueData.find({}),
-      });
-    }
-  }
-
-  const dataBaseTrackUpdate = async (id, track) => {
-    // let track = {
-    //     index: index,
-    //     status: 'SUCCESS'
-    // }
-    console.log({
-      tag: TAG + " dataBaseTrackUpdate-1",
-    });
-    await application
-      .findByIdAndUpdate(id, {
-        $push: {
-          whatsapp_alert_track: track,
-        },
-      })
-      .then((data) => {
-        console.log({
-          tag: TAG + " dataBaseTrackUpdat----",
-          // data
-        });
-      })
-      .catch((err) => {
-        console.log({
-          tag: TAG + " dataBaseTrackUpdatie-----",
-          err,
-        });
-      });
-  };
-  const callAxios = async (data, alertId, ph, count) => {
-    const ulrOld =
-      "https://alpha.panel.mapapi.io/v1/api/whatsapp/60ba619cdc52f500d37e810f/notification";
-    const url2 =
-      "https://api.alpha.panel.mapapi.io/api/whatsapp/60ba619cdc52f500d37e810f/notification";
-    const url =
-      "https://alpha.api.panel.mapapi.io/whatsapp/60ba619cdc52f500d37e810f/notification";
-
-    let whatsappBody = {
-      storage: "full",
-      destination: {
-        integrationId: "60be3bbfaa6e4100d373d7ce",
-        destinationId: ph,
-        // destinationId: '918301848679',
-      },
-      author: {
-        name: "support@moplet.com",
-        email: "Moplet",
-        role: "appMaker",
-      },
-      messageSchema: "whatsapp",
-      message: {
-        type: "template",
-        template: {
-          namespace: "b95d3cd4_9035_4c76_b0bb_788239007519",
-          name: "error_notification",
-          language: {
-            policy: "deterministic",
-            code: "en",
-          },
-          components: [
-            {
-              type: "body",
-              parameters: [
-                {
-                  type: "text",
-                  text: data.name,
-                },
-                {
-                  type: "text",
-                  text: data.email_id,
-                },
-                {
-                  type: "text",
-                  text: data.roll_number,
-                },
-              ],
-            },
-          ],
-        },
-      },
-    };
-    try {
-      let wRes = await axios({
-        url: url,
-        method: "post",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization:
-            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImFwcF82MGJlN2VkZjg5YjA5ODAwZDQ1YjE4OTEifQ.eyJzY29wZSI6ImFwcCJ9.bghgMypz5bsEp0Zp3f56FswY5Rk_iR-zx1MHQMlazgM",
-        },
-        data: JSON.stringify(whatsappBody),
-        // timeout: 500,
-      });
-      const track = {
-        index: count,
-        status: "SUCCESS",
-        res_data: JSON.stringify(wRes.data ? wRes.data : "noREsponse"),
-      };
-      await dataBaseTrackUpdate(alertId, track);
-      console.log({
-        tag: TAG + " callWhatsappApi----DATA",
-        data: wRes.data,
-      });
-      return true;
-    } catch (err) {
-      // const track = {
-      //   index: count,
-      //   status: "FAILED",
-      // };
-      // await dataBaseTrackUpdate(alertId, track);
-      console.log({
-        tag: TAG + " callWhatsappApi---caic-errr",
-        err,
-      });
-      return false;
-    }
-  };
-  const callWhatsappApi = async (ph, data, count = 0, alertId) => {
-    console.log({
-      tag: TAG + " sentWhatsAppAlert-40000",
-    });
-    const isApiSuccessfull = await callAxios(data, alertId, ph, count);
-    if (!isApiSuccessfull) {
-      const isApiSuccessfull2 = await callAxios(data, alertId, ph, count);
-      if (!isApiSuccessfull2) {
-        errorBucket.push({
-          data,
-          alertId,
-          ph,
-          count,
-        });
-      }
-    }
-    return count + 1;
-  };
-  const finalizeAfterHundreds = (uuid) => {
-    // we have two status in maserArray elements one is <running> and other is <completed>
-    const elementIndex = masterArray.findIndex((e) => e.id === uuid);
-    if (elementIndex >= 0) {
-      const updation = {
-        id: uuid,
-        status: "completed",
-      };
-      masterArray.splice(elementIndex, 1, updation);
-    } else {
-      console.log({
-        tag: TAG + "finalizeAfterHundreds",
-        message: "error:: could not find the matched element from master array",
-      });
-    }
-  };
-  const exicuteAlerts = (
-    results = [],
-    bindingData,
-    data,
-    arrayUuid,
-    alertId
-  ) => {
-    new Promise(async (resolve, reject) => {
-      let counter = 0;
-      for (const csvData of results) {
-        let whatsappParams = {
-          name: "",
-          email_id: "",
-          roll_number: "",
-          phone_number: "",
-        };
-        for (const key in whatsappParams) {
-          let type = bindingData[key].type;
-          if (type === "csv_data") {
-            // console.log('....................csvdata.........');
-            let csv_key = bindingData[key].value;
-            whatsappParams[key] = csvData[csv_key] ? csvData[csv_key] : "";
-          } else if (type === "type_data") {
-            // console.log('....................type_data.........');
-            whatsappParams[key] = data[key] ? data[key] : "";
-          }
-        }
-        // console.log(whatsappParams);
-        let errFound = utility.whatsappParamsValidation(whatsappParams);
-
-        if (!errFound) {
-          const track = {
-            index: counter,
-            status: "SUCCESS",
-          };
-          await new Promise((resolve) =>
-            setTimeout(() => {
-              resolve();
-            }, 500)
-          );
-          counter = await callWhatsappApi(
-            whatsappParams.phone_number,
-            whatsappParams,
-            counter,
-            alertId
-          );
-        } else {
-          const track = {
-            index: counter,
-            status: "FAILED",
-          };
-          await dataBaseTrackUpdate(alertId, track);
-        }
-        // counter = counter + 1;
-      }
-
-      if (arrayUuid) {
-        finalizeAfterHundreds(arrayUuid, "completed");
-      }
-      console.log({
-        tag: TAG + " exicuteAlerts()",
-        message: "successfully completed hundreds alerts",
-      });
-      console.log(
-        `&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&-count-${counter}&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&`
-      );
-      resolve();
-    });
-  };
-  const exicuteAlertInErrorBucket = async (errAlerts = [], arrayUuid) => {
-    for (let i = 0; i < errAlerts.length; i++) {
-      const data = errAlerts[i].data;
-      const alertId = errAlerts[i].alertId;
-      const ph = errAlerts[i].ph;
-      const count = errAlerts[i].count;
-      console.log({
-        tag: TAG + "exicuteAlertInErrorBucket --------------exicution-going-on",
-        alertId,
-      });
-      await new Promise((resolve) =>
-        setTimeout(() => {
-          resolve();
-        }, 500)
-      );
-      const isApiSuccessfull = await callAxios(data, alertId, ph, count);
-      if (!isApiSuccessfull) {
-        const errTrack = {
-          index: count,
-          status: "FAILED",
-        };
-        await dataBaseTrackUpdate(alertId, errTrack);
-        console.log({
-          tag: TAG + " exicuteAlertInErrorBucket----alert-failed",
-          message: "something went wrong in server response",
-        });
-      }
-    }
-    //master array updation
-    finalizeAfterHundreds(arrayUuid);
-  };
-  const runSystemForErrorBucket = (totalErrAlerts = []) => {
-    let div = [];
-    for (let index = 0; index < totalErrAlerts.length; index++) {
-      if (div.length >= alertSplitPer) {
-        let arrayUuid = `${Date.now()}-${masterArray.length}`;
-        masterArray.push({
-          id: arrayUuid,
-          status: "running",
-        });
-        exicuteAlertInErrorBucket(div, arrayUuid);
-      } else {
-        div.push(totalErrAlerts[index]);
-      }
-    }
-    if (div.length > 0) {
-      let arrayUuid2 = `${Date.now()}-${masterArray.length}`;
-      masterArray.push({
-        id: arrayUuid2,
-        status: "running",
-      });
-      exicuteAlertInErrorBucket(div, arrayUuid2);
-    }
-  };
-  const masterArrayStatusChecker = () => {
-    const found = masterArray.find((e) => e.status == "running");
-    console.log("------------------masterArrayStatusChecker----------------");
-    console.log(found);
-    let processCompleted = false;
-    if (found) {
-      processCompleted = false;
-    } else {
-      processCompleted = true;
-    }
-    return processCompleted;
-  };
-
-  async function masterArrayLisnter(alertId) {
-    console.log("--------------------------before setInterval loop");
-    const inervel = setInterval(() => {
-      new Promise(async (resolve) => {
-        let processCompleted = masterArrayStatusChecker();
-        let lengthOfErrorBucket = errorBucket.length;
-        if (processCompleted && lengthOfErrorBucket > 0) {
-          console.log({
-            tag:
-              TAG +
-              " masterArrayLisnter ------processCompleted && lengthOfErrorBucket > 0--------running",
-          });
-          runSystemForErrorBucket(errorBucket);
-          errorBucket = [];
-        } else if (processCompleted && lengthOfErrorBucket <= 0) {
-          try {
-            let dbAlertUpdataion = await application.findByIdAndUpdate(
-              alertId,
-              {
-                alert_status: "PROCESSED",
-              }
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter-findByIdAndUpdate",
-              // dbAlertUpdataion,
-            });
-          } catch (err) {
-            console.log({
-              tag: TAG + " masterArrayLisnter-findByIdAndUpdate--err",
-              err,
-            });
-            //---retrying database updation
-            if (err) {
-              let dbAlertUpdataion = await application.findByIdAndUpdate(
-                req.params.id,
-                {
-                  alert_status: "PROCESSED",
-                }
-              );
-            }
-          }
-
-          console.log({ processCompleted });
-          //clearing mastert array . it was the listening source of exicution of alerts wheather it is complete or not
-          masterArray = [];
-
-          const queue = await queueData.find({}).limit(3);
-          console.log(
-            "___________________________________________masterArrayLisnter-queue"
-          );
-          console.log({ tag: TAG + " masterArrayLisnter", queue });
-          if (queue.length > 0) {
-            const queueId = queue[0]._id;
-            await queueData.findByIdAndDelete(queueId);
-            runSystem(queue[0].alert.alertId);
-            console.log(
-              "++++++++++++++++++++++++masterArrayLisnter-letestSystemInfo- proccessing alert inqueue"
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter--if queue-length",
-              SystemInfo: await systemConfig.find(),
-              queueInfo: await queueData.find({}),
-            });
-          } else {
-            const letestSystemInfo = await systemConfig.find();
-            const latestAvailableSystem = letestSystemInfo[0].availble_system;
-            console.log(
-              "=_____________________________masterArrayLisnter-letestSystemInfo-before system config updation"
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter",
-              letestSystemInfo,
-            });
-            if (latestAvailableSystem < letestSystemInfo[0].total_system) {
-              await systemConfig.findByIdAndUpdate(IdOfsystemConfigration, {
-                availble_system: latestAvailableSystem + 1,
-              });
-            }
-            console.log(
-              "__________________________________masterArrayLisnter-letestSystemInfo--after system config updation"
-            );
-            console.log({
-              tag: TAG + " masterArrayLisnter",
-              SystemInfo: await systemConfig.find(),
-              queueInfo: await queueData.find({}),
-            });
-            clearInterval(inervel);
-          }
-        }
-
-        resolve();
-      });
-    }, 2 * 1000);
-  }
-
-  // runSystem function is the main function or initiator
-  const runSystem = async (alertId) => {
-    await application
-      .findByIdAndUpdate(alertId, {
-        alert_status: "PROCESSING",
-      })
-      .then((data) => {
-        application
-          .findById(alertId)
-          .then((data) => {
-            if (data.data_source === "DYNAMIC") {
-              let isDataAvailabe = data
-                ? data.csv_file
-                  ? true
-                  : false
-                : false;
-              const bindingData = JSON.parse(data.binding_data);
-              let results = [];
-              if (isDataAvailabe) {
-                fs.createReadStream(data.csv_file)
-                  .pipe(csv())
-                  .on("data", (csvData) => {
-                    results.push(csvData);
-                  })
-                  .on("end", () => {
-                    new Promise(async (resolve) => {
-                      let divides = [];
-                      for (let i = 0; i < results.length; i++) {
-                        divides.push(results[i]);
-
-                        if (divides.length >= alertSplitPer) {
-                          let arrayUuid = `${Date.now()}-${masterArray.length}`;
-                          masterArray.push({
-                            id: arrayUuid,
-                            status: "running",
-                          });
-                          exicuteAlerts(
-                            divides,
-                            bindingData,
-                            data,
-                            arrayUuid,
-                            alertId
-                          );
-                          divides = [];
-                        }
-                      }
-                      const lengthOfResultArray = results.length;
-                      const lengthOfMasterArray = masterArray.length;
-                      const lengthOfDivides = divides.length;
-                      console.log({
-                        lengthOfResultArray,
-                        lengthOfMasterArray,
-                        masterArray,
-                        lengthOfDivides,
-                      });
-                      await application
-                        .findByIdAndUpdate(alertId, {
-                          csv_data_length: lengthOfResultArray,
-                        })
-                        .then((data) => {
-                          console.log({
-                            tag: TAG + "at csv_data_length update",
-                            // data,
-                          });
-                        })
-                        .catch((err) => {
-                          console.log({
-                            tag: TAG + "at csv_data_length update",
-                            err,
-                          });
-                        });
-                      if (lengthOfDivides > 0) {
-                        let arrayUuid2 = `${Date.now()}-${
-                          masterArray.length + 1
-                        }`;
-                        masterArray.push({
-                          id: arrayUuid2,
-                          status: "running",
-                        });
-                        exicuteAlerts(
-                          divides,
-                          bindingData,
-                          data,
-                          arrayUuid2,
-                          alertId
-                        );
-                      }
-                      masterArrayLisnter(alertId);
-                      console.log(
-                        "-------------------------after-------------masterArrayLisnter-"
-                      );
-                      console.log({ masterArray });
-                      resolve();
-                    });
-                  });
-              } else {
-                console.log({
-                  tag: TAG + "runSystem-csv finder",
-                  message: "csv fle not found",
-                });
-                // res.status(404).json({
-                //   message: "csv fle not found",
-                // });
-              }
-            } else if (data.data_source === "STATIC") {
-              console.log({
-                tag: TAG + "runSystem-> appliction-type-chooser",
-                message: "STATIC NOT WORKING",
-              });
-              // res.send("STATIC NOT WORKING");
-            }
-          })
-          .catch((err) => {
-            console.log({
-              tag: TAG + "runSystem-application-finder -> ",
-              message: "cought err",
-              err,
-            });
-            // res.status(404).json(err);
-          });
-
-        // res.json({
-        //   message: "processing",
-        // });
-      })
-      .catch((err) => {
-        console.log({
-          tag: TAG + "runSystem-application-status updation -> ",
-          message: "cought err",
-          err,
-        });
-        // res.json({
-        //   message: "processing--failed",
-        // });
-      });
-  };
-
-  //starting initiation
-  if (isSystemAvailbale) {
-    runSystem(req.params.id);
-    res.json({ message: "proccessing" });
-  } else {
-    console.log({
-      tag: TAG + " available system is zero--then alert in queue",
-    });
-    res.json({ message: "proccessing" });
-  }
-});
-//new system
+//new system-5 exicuters
 router.post("/sendAlert_csv6/:id", async (req, res) => {
   const TAG = "sendAlert_csv6";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
@@ -3095,6 +1190,676 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
 
       if (isNewInitializing) {
         const arr = ["a", "b", "c", "d", "e"];
+        for (let i = 0; i < arr.length; i++) {
+          executer(arr[i]);
+        }
+      } else {
+        if (RecursionExceededExecuters.length > 0) {
+          for (let i = 0; i < RecursionExceededExecuters.length; i++) {
+            executerInfo[RecursionExceededExecuters[i]] = {
+              recursion: 0,
+              status: "running",
+            };
+            executer(RecursionExceededExecuters[i]);
+          }
+          RecursionExceededExecuters = [];
+        }
+      }
+    }
+  };
+  //lister : handling whole the system by callin fuctions on intervels
+  const linstener = async () => {
+    const intervel = setInterval(() => {
+      console.log({
+        tag: TAG + "linstener",
+        // message:
+        //   "====================================================================================================",
+        listnerCounter,
+        // exicutableDataContainer,
+        exicutableDataContainerLenth: exicutableDataContainer.length,
+        proccessedDataContainerLength: proccessedDataContainer.length,
+        // proccessedDataContainer,
+        exicutionCompletedContainerItems,
+        executerErrorBucket,
+        executerInfo,
+        exicuterFaultDetectorReport,
+        alertDatabaseUpdaterInfo,
+        databaseUpdateErrorBucket,
+        listnerCommand,
+        listnercountDown,
+      });
+      listnerCounter++;
+      loadAlerts();
+      runExicuter();
+      executerFaultDetector();
+      alertDatabaseUpdater();
+      commander();
+      //listener termination proccess
+      if (listnerCommand === "terminate") {
+        if (listnercountDown > 0) {
+          listnercountDown--;
+        }
+        if (listnercountDown === 0) {
+          clearInterval(intervel);
+          systemCM.systemConfigUpdate({
+            is_listener_running: false,
+            listener_tracker: [0],
+          });
+        }
+      }
+    }, 500);
+  };
+  const requestManager = async () => {
+    //campaign queue details
+    const cmq = await campQM.save(req.params.id);
+    if (cmq === null) {
+      const cmq2 = await campQM.save(req.params.id);
+      if (cmq2 === null) {
+        systemErrorReporter(
+          "campaignQueueError",
+          "can not Update alerts in to Queue  --requestManger"
+        );
+      } else {
+        console.log({
+          tag: TAG + "requestManager",
+          message: "new campaign ---cmq2 queued",
+        });
+      }
+    } else {
+      console.log({
+        tag: TAG + "requestManager",
+        message: "new campaign ---cmq queued",
+      });
+    }
+    //system config details
+    // const scm = await systemCM.save(true, listnerCounter);
+    // if (scm === null) {
+    //   const scm2 = await systemCM.save(true, listnerCounter);
+    //   if (scm2 === null) {
+    //     systemErrorReporter(
+    //       "systemConfigSaveError",
+    //       "can not save listner data into db --requestManger"
+    //     );
+    //   }
+    // }
+    let systemConfigData = await systemCM.findOne();
+    console.log("[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]");
+    console.log(systemConfigData);
+    if (systemConfigData) {
+      if (!systemConfigData.is_listener_running) {
+        const scm = await systemCM.systemConfigUpdate({
+          is_listener_running: true,
+          listener_tracker: [0],
+        });
+        if (scm === null) {
+          const scm2 = await systemCM.systemConfigUpdate({
+            is_listener_running: true,
+            listener_tracker: [0],
+          });
+          if (scm2 === null) {
+            systemErrorReporter(
+              "systemConfigError",
+              "can not save listner data into db --requestManger"
+            );
+          } else {
+            linstener();
+            console.log({
+              tag: TAG + "requestManager",
+              message:
+                "system configue --scm2. updated ,listener started running",
+            });
+          }
+        } else {
+          linstener();
+          console.log({
+            tag: TAG + "requestManager",
+            message: "system configue --scm. updated ,listener started running",
+          });
+        }
+      } else {
+        if (listnercountDown > 0) {
+          listnerCommand = "";
+          listnercountDown = -2;
+        }
+        console.log({
+          tag: TAG + "requestManager",
+          message: "system configue listern is in running already",
+        });
+      }
+    } else {
+      systemErrorReporter(
+        "systemConfigError",
+        "can not find listner data from db --requestManger"
+      );
+      console.log({
+        tag: TAG + "requestManager",
+        message: "system configue not found",
+      });
+    }
+    //calling system error analyser
+    systemErrorAnalyser(systemErrorReportOnDB);
+  };
+  //initiator initiator initiator
+  //initiator initiator initiator
+  //initiator initiator initiator
+  requestManager();
+  res.status(200).json({ message: "request accepted" });
+});
+//new system - 3 exicuters
+router.post("/sendAlert_csv7/:id", async (req, res) => {
+  const TAG = "sendAlert_csv7";
+  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+  // below data can control the system, it altered by commander function
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  var listnerCommand = ""; // terminate
+  var listnercountDown = -1; // -1 default ,-2 disabled
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //exicutableDataContainer is a two diamentional container
+  const exicutableDataContainer = [];
+  //processedDataContainer: it is the to be updated in database ,elemets is object like {alertId,ph,res_data}
+  const proccessedDataContainer = [];
+  //exicutionCompletedItems: it is the data of completed item of exicutableDataContainer;
+  const exicutionCompletedContainerItems = [];
+  //executerErrorBucket is a data container ,it filled by the executer when failing the whatsApp-api calls
+  const executerErrorBucket = [];
+  var listnerCounter = 0;
+  var systemErrorReportOnDB = {
+    tag: "systemErrorReportOnDB",
+    campaignQueueError: "",
+    systemConfigError: "",
+  };
+  var systemErrorReportOnLocal = {
+    tag: "systemErrorReportOnLocal",
+    executer: "",
+  };
+  //LCCN : Last Called Colum Number
+  var LCCN = 0;
+  //executerInfo: it is the info about executer. about the recution,and status.
+  var executerInfo = {
+    counter: 0,
+    delayIntervel: 0,
+    counterLastUpdatedTime: null,
+    faultDetector: [],
+    status: "stoped", //running or stoped
+    isWritable: true,
+    a: { recursion: 0, status: "stoped" },
+    b: { recursion: 0, status: "stoped" },
+    c: { recursion: 0, status: "stoped" },
+    d: { recursion: 0, status: "stoped" },
+    e: { recursion: 0, status: "stoped" },
+    //the status willbe enum of [stoped,recursion-exceed,running]
+  };
+  //executerRecursionHolder: whenever the any one of five executer exceeded the recurion limit ,that info will appear hear eg: [a,b,e],
+  var RecursionExceededExecuters = [];
+  //exicuterFaultDetectorReport: it is the report of unexpected exicuter is working or not
+  var exicuterFaultDetectorReport = [];
+  //alertDatabaseUpdaterInfo: it is a info about alertDatabaseUpdater
+  var alertDatabaseUpdaterInfo = {
+    status: "stoped", //running or stoped
+    reTryStatus: "stoped", //running or stoped
+    finalAlertStatus: "stoped", //running or stoped
+  };
+  //databaseUpdateErrorBucket: is the alertData have to update to db,and it got when alertDatabaseUpdater-trackUpdater catch err .
+  var databaseUpdateErrorBucket = []; //element->{ id, track }
+
+  const commander = () => {
+    if (
+      executerInfo.status === "stoped" &&
+      alertDatabaseUpdaterInfo.status === "stoped" &&
+      alertDatabaseUpdaterInfo.reTryStatus === "stoped" &&
+      alertDatabaseUpdaterInfo.finalAlertStatus === "stoped"
+    ) {
+      if (listnerCommand !== "terminate") {
+        listnerCommand = "terminate";
+        listnercountDown = 50;
+      }
+    } else {
+      listnerCommand = "";
+      listnercountDown = -2;
+    }
+  };
+
+  //alertDatabaseUpdater : it will manage trackupdation of each alertApicalls and if alert completed it will update the status
+  const alertDatabaseUpdater = () => {
+    const trackUpdater = async (id, track) => {
+      // let track = {
+      //     status: 'SUCCESS',
+      //      ph:889999999,
+      //      res_data:<response>,
+      // }
+      await application
+        .findByIdAndUpdate(id, {
+          $push: {
+            whatsapp_alert_track: track,
+          },
+        })
+        .then((data) => {})
+        .catch((err) => {
+          databaseUpdateErrorBucket.push({ id, track });
+        });
+    };
+    if (alertDatabaseUpdaterInfo.status !== "running") {
+      const alertDatabaseUpdater1 = async () => {
+        if (proccessedDataContainer.length > 0) {
+          alertDatabaseUpdaterInfo.status = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = proccessedDataContainer[0];
+            proccessedDataContainer.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 30)
+            );
+            trackUpdater(item.alertId, {
+              status: item.status,
+              res_data: item.res_data,
+              ph: item.ph,
+            });
+            if (proccessedDataContainer.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.status = "stoped";
+              n = 100;
+            }
+          }
+        }
+      };
+      alertDatabaseUpdater1();
+    }
+    if (alertDatabaseUpdaterInfo.reTryStatus !== "running") {
+      const alertDatabaseUpdater2OnErrorBase = async () => {
+        if (databaseUpdateErrorBucket.length > 0) {
+          alertDatabaseUpdaterInfo.reTryStatus = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = databaseUpdateErrorBucket[0];
+            databaseUpdateErrorBucket.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 50)
+            );
+            trackUpdater(item.id, item.track);
+            if (databaseUpdateErrorBucket.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.reTryStatus = "stoped";
+              n = 100;
+            }
+          }
+        }
+      };
+      alertDatabaseUpdater2OnErrorBase();
+    }
+
+    if (alertDatabaseUpdaterInfo.finalAlertStatus !== "running") {
+      const updateProcessedAlert = async (alertId) => {
+        await application
+          .findByIdAndUpdate(alertId, {
+            alert_status: "PROCESSED",
+          })
+          .then((data) => {})
+          .catch((err) => {
+            exicutionCompletedContainerItems.push(alertId);
+          });
+      };
+      (async function () {
+        if (exicutionCompletedContainerItems.length > 0) {
+          alertDatabaseUpdaterInfo.finalAlertStatus = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = exicutionCompletedContainerItems[0];
+            exicutionCompletedContainerItems.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 400)
+            );
+            updateProcessedAlert(item);
+            if (exicutionCompletedContainerItems.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.finalAlertStatus = "stoped";
+              n = 100;
+            }
+          }
+        }
+      })();
+    }
+  };
+  //executerFaultDetector: it will find unexpected exicuter is working or not
+  const executerFaultDetector = () => {
+    if (executerInfo.faultDetector.length > 50) {
+      const faultArray = executerInfo.faultDetector;
+      executerInfo.faultDetector = [];
+      let dupArra = [];
+      for (let i = 0; i < faultArray.length; i++) {
+        const item = faultArray[i];
+        const found = dupArra.find((e) => e === item);
+        dupArra.push(item);
+        if (found) {
+          exicuterFaultDetectorReport.push("fault");
+        }
+      }
+    }
+  };
+  //executableDataCreator: it creating whatsappPayloads based on available data in database
+  const executableDataCreator = (data) => {
+    const alertId = data._id;
+    if (data.data_source === "DYNAMIC") {
+      let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
+      const bindingData = JSON.parse(data.binding_data);
+      let results = [];
+      if (isDataAvailabe) {
+        fs.createReadStream(data.csv_file)
+          .pipe(csv())
+          .on("data", (csvData) => {
+            results.push(csvData);
+          })
+          .on("end", () => {
+            mainMM.findByIdAndUpdateCsvLength(alertId, results.length);
+            let whatsappParamsArray = [];
+            for (const csvData of results) {
+              let whatsappParams = {
+                name: "",
+                email_id: "",
+                roll_number: "",
+                phone_number: "",
+              };
+              for (const key in whatsappParams) {
+                let type = bindingData[key].type;
+                if (type === "csv_data") {
+                  // console.log('........alertId............csvdata.........');
+                  let csv_key = bindingData[key].value;
+                  whatsappParams[key] = csvData[csv_key]
+                    ? csvData[csv_key]
+                    : "";
+                } else if (type === "type_data") {
+                  // console.log('....................type_data.........');
+                  whatsappParams[key] = data[key] ? data[key] : "";
+                }
+              }
+              // console.log(whatsappParams);
+              let errFound = utility.whatsappParamsValidation(whatsappParams);
+
+              if (!errFound) {
+                whatsappParamsArray.push(whatsappParams);
+              }
+            }
+            exicutableDataContainer.push({
+              alertId,
+              payloads: whatsappParamsArray,
+              totalPayloads: whatsappParamsArray.length,
+            });
+          });
+      } else {
+        console.log({
+          tag: TAG + "runSystem-csv finder",
+          message: "csv fle not found",
+        });
+      }
+    } else if (data.data_source === "STATIC") {
+      console.log({
+        tag: TAG + "runSystem-> appliction-type-chooser",
+        message: "STATIC NOT WORKING",
+      });
+    }
+  };
+  //loading alerts
+  const loadAlerts = async () => {
+    let foundNew = false;
+    let alertData = null;
+    const dataBaseInfo = await dataBaseChecker.dataBaseChecker();
+
+    // console.log({ tag: TAG + " loadAlerts", dataBaseInfo });
+    if (dataBaseInfo) {
+      foundNew = true;
+    }
+    if (foundNew) {
+      alertData = await loadCampaignData.loadCampaignData(
+        dataBaseInfo.campaignId
+      );
+      if (alertData) {
+        let deletion = campQM.deleteById(dataBaseInfo._id);
+        if (deletion) {
+          console.log({ tag: TAG + " loadAlerts", deletion });
+        } else {
+          console.log({ tag: TAG + " loadAlerts", message: "failed" });
+        }
+        mainMM.findByIdAndUpdateAlertStatus(
+          dataBaseInfo.campaignId,
+          "PROCESSING"
+        );
+      }
+      console.log({ tag: TAG + " loadAlerts", alertData });
+    }
+    if (alertData) {
+      executableDataCreator(alertData);
+    }
+  };
+  //linsterManager
+  const listnerManager = async () => {
+    if (listnerCounter !== 0) {
+      systemCM.updateListnerTrack(listnerCounter);
+    }
+    listnerCounter++;
+    if (listnerCounter >= 10000) {
+      systemCM.updateListner({ listener_tracker: [0] });
+      listnerCounter = 0;
+    }
+  };
+  //system Error reporter
+  const systemErrorReporter = (key, value) => {
+    systemErrorReportOnDB[key] = value;
+  };
+  //system Error reporter on local
+  const systemErrorReporterOnLocal = (key, value) => {
+    systemErrorReportOnLocal[key] = value;
+  };
+  // systemErrorAnalyser
+  const systemErrorAnalyser = async (obj) => {
+    let stoper = 0;
+    for (const key in obj) {
+      if ((stoper = 0)) {
+        if (obj[key] != "") {
+          stoper = 1;
+          console.log({
+            tag: TAG + "systemErrorAnalyser",
+            message:
+              "error detected ######################################################################",
+            message2:
+              "error detected ######################################################################",
+            message3:
+              "error detected ######################################################################",
+            errorReport: obj,
+          });
+        }
+      }
+    }
+  };
+  //executerCallback: to fillthe executerErrorBucket;
+  const executerCallback = async (okData, notOkData, finalMessage, execId) => {
+    if (okData) {
+      proccessedDataContainer.push(okData);
+    }
+    if (notOkData) {
+      //executerErrorBucket : this feature not yet avaible
+      executerErrorBucket.push(notOkData);
+      // proccessedDataContainer.push(notOkData);
+    }
+    if (finalMessage) {
+      exicutionCompletedContainerItems.push(finalMessage);
+    }
+    if (executerInfo.delayIntervel >= 20) {
+      // await new Promise((resolve) =>
+      //   setTimeout(() => {
+      //     resolve();
+      //   }, 500)
+      // );
+      executerInfo.delayIntervel = 0;
+      executer(execId);
+    } else {
+      executer(execId);
+    }
+  };
+  //calling whatsAppApi
+  const executer = async (execId) => {
+    if (
+      exicutableDataContainer.length > 0 &&
+      LCCN < exicutableDataContainer.length
+    ) {
+      if (!executerInfo.isWritable) {
+        await (async function delayLoop() {
+          if (!executerInfo.isWritable) {
+            console.log(
+              "------------(((((((((((((((((((((((exicuter-delay-Loop-working))))))))))))))))))))))))))))----------------"
+            );
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 150)
+            );
+            delayLoop();
+          } else {
+            executerInfo.isWritable = false;
+          }
+        })();
+      } else {
+        executerInfo.isWritable = false;
+      }
+      const currentExecInfo = executerInfo;
+      let thisExicuterIfo = currentExecInfo[execId];
+      if (thisExicuterIfo.recursion === 200) {
+        executerInfo.isWritable = true;
+        executerInfo[execId].status = "recursion-exceed";
+        RecursionExceededExecuters.push(execId);
+      } else {
+        const item = exicutableDataContainer[LCCN];
+        const plaloadsLength = item.payloads.length;
+        const nextIndex = item.nextIndex ? item.nextIndex : 0;
+        const totalPayloads = item.totalPayloads;
+        const countOfCompleted = item.countOfCompleted
+          ? item.countOfCompleted
+          : 0;
+        if (plaloadsLength > 0 && nextIndex < plaloadsLength) {
+          let alertId = item.alertId;
+          let payload = item.payloads[nextIndex];
+          exicutableDataContainer[LCCN].nextIndex = nextIndex + 1;
+          exicutableDataContainer[LCCN].countOfCompleted = countOfCompleted + 1;
+          // final message will helped for the database updation of that alert as it is completed
+          let finalMessage = null;
+          if (countOfCompleted + 1 == totalPayloads) {
+            finalMessage = "completed";
+            exicutableDataContainer.splice(LCCN, 1);
+          } else {
+            finalMessage = null;
+          }
+          if (LCCN + 1 < exicutableDataContainer.length) {
+            LCCN++;
+          } else if (LCCN + 1 == exicutableDataContainer.length) {
+            LCCN = 0;
+          } else if (LCCN + 1 > exicutableDataContainer.length) {
+            LCCN = 0;
+          }
+          executerInfo.counter = currentExecInfo.counter + 1;
+          executerInfo.delayIntervel++;
+          executerInfo.counterLastUpdatedTime = Date.now();
+          executerInfo.faultDetector.push(currentExecInfo.counter);
+          executerInfo[execId].recursion = thisExicuterIfo.recursion + 1;
+          if (thisExicuterIfo.status !== "running") {
+            executerInfo[execId].status = "running";
+          }
+          //accepting callback with params okData and notOkData
+          whatsApp.whatsAppApiCaller(
+            payload,
+            alertId,
+            finalMessage,
+            execId,
+            executerCallback
+          );
+          executerInfo.isWritable = true;
+        } else {
+          if (plaloadsLength <= 0) {
+            exicutableDataContainer.splice(LCCN, 1);
+          } else if (nextIndex > plaloadsLength) {
+            systemErrorReporterOnLocal(
+              "executer",
+              "nextIndex exeeded the plaloadsLength"
+            );
+            exicutableDataContainer.splice(LCCN, 1);
+          }
+        }
+      }
+    } else {
+      if (exicutableDataContainer.length <= 0) {
+        executerInfo[execId].status = "stoped";
+      }
+      if (LCCN >= exicutableDataContainer.length) {
+        systemErrorReporterOnLocal(
+          "executer",
+          "LCCN exeeded the exicutableDataContainer.length"
+        );
+      }
+    }
+  };
+  //runExicuter: it calls exeCuter . it is initializer of exicution stage
+  const runExicuter = () => {
+    let stopedArray = [];
+    let currExecInfo1 = executerInfo;
+    for (const key in currExecInfo1) {
+      if (
+        key === "a" ||
+        key === "b" ||
+        key === "c" ||
+        key === "d" ||
+        key === "e"
+      ) {
+        let itemStatus = currExecInfo1[key].status;
+        if (itemStatus === "stoped") {
+          stopedArray.push(key);
+        }
+      }
+    }
+    if (stopedArray.length === 5) {
+      if (executerInfo.status !== "stoped") {
+        executerInfo.status = "stoped";
+      }
+    }
+    if (exicutableDataContainer.length > 0) {
+      let isNewInitializing = true;
+      let array = [];
+      let currentExecInfo = executerInfo;
+      for (const key in currentExecInfo) {
+        if (
+          key === "a" ||
+          key === "b" ||
+          key === "c" ||
+          key === "d" ||
+          key === "e"
+        ) {
+          let itemStatus = currentExecInfo[key].status;
+          if (itemStatus !== "stoped") {
+            array.push(key);
+          }
+        }
+      }
+
+      if (array.length > 0) {
+        isNewInitializing = false;
+        if (executerInfo.status !== "running") {
+          executerInfo.status = "running";
+        }
+      }
+
+      if (isNewInitializing) {
+        // const arr = ["a", "b", "c","d","e"];
+        const arr = ["a"];
         for (let i = 0; i < arr.length; i++) {
           executer(arr[i]);
         }
