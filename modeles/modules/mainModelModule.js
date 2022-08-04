@@ -1,5 +1,5 @@
 const mainModel = require("../../model");
-const TAG = 'MAIN MODEL MODULE'
+const TAG = "MAIN MODEL MODULE";
 
 module.exports.find = async (arg) => {
   try {
@@ -19,7 +19,7 @@ module.exports.findById = async (id) => {
   }
 };
 
-module.exports.findByIdAndUpdate = async (id, length) => {
+module.exports.findByIdAndUpdateCsvLength = async (id, length) => {
   mainModel
     .findByIdAndUpdate(id, {
       csv_data_length: length,
@@ -34,6 +34,29 @@ module.exports.findByIdAndUpdate = async (id, length) => {
       console.log({
         tag: TAG + "at csv_data_length update",
         err,
+      });
+    });
+};
+
+module.exports.findByIdAndUpdateAlertStatus = async (alertId, status) => {
+  mainModel
+    .findByIdAndUpdate(alertId, {
+      alert_status: status, //"PROCESSED",
+    })
+    .then((data) => {
+      // console.log({
+      //   tag: TAG + "at csv_data_length update",
+      //   // data,
+      // });
+    })
+    .catch((err) => {
+      console.log(
+        "......................................................errrrrrrrrrrr---------"
+      );
+      console.log({
+        tag: TAG + "at csv_data_length update",
+        err,
+        status,
       });
     });
 };

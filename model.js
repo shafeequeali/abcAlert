@@ -55,11 +55,11 @@ const ApplicationModel = new mongoose.Schema({
   },
   whatsapp_alert_track: [
     {
-      index: Number,
       status: {
         type: String,
         enum: ["SUCCESS", "FAILED"],
       },
+      ph: String,
       res_data: String,
     },
   ],

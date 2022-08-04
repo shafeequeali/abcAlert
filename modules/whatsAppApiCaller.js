@@ -1,6 +1,6 @@
 const axios = require("axios");
 
-module.exports.whatsAppApiCaller = (
+module.exports.whatsAppApiCaller = async (
   data,
   alertId,
   finalMessage,
@@ -115,6 +115,8 @@ module.exports.whatsAppApiCaller = (
             alertId,
             message: finalMessage ? "wasFinal" : "",
             data,
+            res_data: "",
+            ph: data.phone_number,
           };
           //callback params in order of (okData,NotOkData,finalMessage,execId)
           callback(null, NotOkData, finalMessage ? alertId : null, execId);

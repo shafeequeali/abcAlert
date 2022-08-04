@@ -2585,6 +2585,16 @@ router.post("/sendAlert_csv5/:id", async (req, res) => {
 router.post("/sendAlert_csv6/:id", async (req, res) => {
   const TAG = "sendAlert_csv6";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+  // below data can control the system, it altered by commander function
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  var listnerCommand = ""; // terminate
+  var listnercountDown = -1; // -1 default ,-2 disabled
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
   //exicutableDataContainer is a two diamentional container
   const exicutableDataContainer = [];
   //processedDataContainer: it is the to be updated in database ,elemets is object like {alertId,ph,res_data}
@@ -2608,9 +2618,10 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
   //executerInfo: it is the info about executer. about the recution,and status.
   var executerInfo = {
     counter: 0,
+    delayIntervel: 0,
     counterLastUpdatedTime: null,
     faultDetector: [],
-    status: "stopped", //running or stopped
+    status: "stoped", //running or stoped
     isWritable: true,
     a: { recursion: 0, status: "stoped" },
     b: { recursion: 0, status: "stoped" },
@@ -2623,7 +2634,141 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
   var RecursionExceededExecuters = [];
   //exicuterFaultDetectorReport: it is the report of unexpected exicuter is working or not
   var exicuterFaultDetectorReport = [];
+  //alertDatabaseUpdaterInfo: it is a info about alertDatabaseUpdater
+  var alertDatabaseUpdaterInfo = {
+    status: "stoped", //running or stoped
+    reTryStatus: "stoped", //running or stoped
+    finalAlertStatus: "stoped", //running or stoped
+  };
+  //databaseUpdateErrorBucket: is the alertData have to update to db,and it got when alertDatabaseUpdater-trackUpdater catch err .
+  var databaseUpdateErrorBucket = []; //element->{ id, track }
 
+  const commander = () => {
+    if (
+      executerInfo.status === "stoped" &&
+      alertDatabaseUpdaterInfo.status === "stoped" &&
+      alertDatabaseUpdaterInfo.reTryStatus === "stoped" &&
+      alertDatabaseUpdaterInfo.finalAlertStatus === "stoped"
+    ) {
+      if (listnerCommand !== "terminate") {
+        listnerCommand = "terminate";
+        listnercountDown = 50;
+      }
+    } else {
+      listnerCommand = "";
+      listnercountDown = -2;
+    }
+  };
+
+  //alertDatabaseUpdater : it will manage trackupdation of each alertApicalls and if alert completed it will update the status
+  const alertDatabaseUpdater = () => {
+    const trackUpdater = async (id, track) => {
+      // let track = {
+      //     status: 'SUCCESS',
+      //      ph:889999999,
+      //      res_data:<response>,
+      // }
+      await application
+        .findByIdAndUpdate(id, {
+          $push: {
+            whatsapp_alert_track: track,
+          },
+        })
+        .then((data) => {})
+        .catch((err) => {
+          databaseUpdateErrorBucket.push({ id, track });
+        });
+    };
+    if (alertDatabaseUpdaterInfo.status !== "running") {
+      const alertDatabaseUpdater1 = async () => {
+        if (proccessedDataContainer.length > 0) {
+          alertDatabaseUpdaterInfo.status = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = proccessedDataContainer[0];
+            proccessedDataContainer.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 30)
+            );
+            trackUpdater(item.alertId, {
+              status: item.status,
+              res_data: item.res_data,
+              ph: item.ph,
+            });
+            if (proccessedDataContainer.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.status = "stoped";
+              n = 100;
+            }
+          }
+        }
+      };
+      alertDatabaseUpdater1();
+    }
+    if (alertDatabaseUpdaterInfo.reTryStatus !== "running") {
+      const alertDatabaseUpdater2OnErrorBase = async () => {
+        if (databaseUpdateErrorBucket.length > 0) {
+          alertDatabaseUpdaterInfo.reTryStatus = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = databaseUpdateErrorBucket[0];
+            databaseUpdateErrorBucket.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 50)
+            );
+            trackUpdater(item.id, item.track);
+            if (databaseUpdateErrorBucket.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.reTryStatus = "stoped";
+              n = 100;
+            }
+          }
+        }
+      };
+      alertDatabaseUpdater2OnErrorBase();
+    }
+
+    if (alertDatabaseUpdaterInfo.finalAlertStatus !== "running") {
+      const updateProcessedAlert = async (alertId) => {
+        await application
+          .findByIdAndUpdate(alertId, {
+            alert_status: "PROCESSED",
+          })
+          .then((data) => {})
+          .catch((err) => {
+            exicutionCompletedContainerItems.push(alertId);
+          });
+      };
+      (async function () {
+        if (exicutionCompletedContainerItems.length > 0) {
+          alertDatabaseUpdaterInfo.finalAlertStatus = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = exicutionCompletedContainerItems[0];
+            exicutionCompletedContainerItems.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 400)
+            );
+            updateProcessedAlert(item);
+            if (exicutionCompletedContainerItems.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.finalAlertStatus = "stoped";
+              n = 100;
+            }
+          }
+        }
+      })();
+    }
+  };
   //executerFaultDetector: it will find unexpected exicuter is working or not
   const executerFaultDetector = () => {
     if (executerInfo.faultDetector.length > 50) {
@@ -2633,6 +2778,7 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
       for (let i = 0; i < faultArray.length; i++) {
         const item = faultArray[i];
         const found = dupArra.find((e) => e === item);
+        dupArra.push(item);
         if (found) {
           exicuterFaultDetectorReport.push("fault");
         }
@@ -2653,7 +2799,7 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
             results.push(csvData);
           })
           .on("end", () => {
-            mainMM.findByIdAndUpdate(alertId, results.length);
+            mainMM.findByIdAndUpdateCsvLength(alertId, results.length);
             let whatsappParamsArray = [];
             for (const csvData of results) {
               let whatsappParams = {
@@ -2722,6 +2868,10 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
         } else {
           console.log({ tag: TAG + " loadAlerts", message: "failed" });
         }
+        mainMM.findByIdAndUpdateAlertStatus(
+          dataBaseInfo.campaignId,
+          "PROCESSING"
+        );
       }
       console.log({ tag: TAG + " loadAlerts", alertData });
     }
@@ -2770,7 +2920,7 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
     }
   };
   //executerCallback: to fillthe executerErrorBucket;
-  const executerCallback = (okData, notOkData, finalMessage, execId) => {
+  const executerCallback = async (okData, notOkData, finalMessage, execId) => {
     if (okData) {
       proccessedDataContainer.push(okData);
     }
@@ -2782,17 +2932,47 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
     if (finalMessage) {
       exicutionCompletedContainerItems.push(finalMessage);
     }
-    executer(execId);
+    if (executerInfo.delayIntervel >= 20) {
+      await new Promise((resolve) =>
+        setTimeout(() => {
+          resolve();
+        }, 10000)
+      );
+      executerInfo.delayIntervel = 0;
+      executer(execId);
+    } else {
+      executer(execId);
+    }
   };
   //calling whatsAppApi
-  const executer = (execId) => {
+  const executer = async (execId) => {
     if (
       exicutableDataContainer.length > 0 &&
       LCCN < exicutableDataContainer.length
     ) {
+      if (!executerInfo.isWritable) {
+        await (async function delayLoop() {
+          if (!executerInfo.isWritable) {
+            console.log(
+              "------------(((((((((((((((((((((((exicuter-delay-Loop-working))))))))))))))))))))))))))))----------------"
+            );
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 150)
+            );
+            delayLoop();
+          } else {
+            executerInfo.isWritable = false;
+          }
+        })();
+      } else {
+        executerInfo.isWritable = false;
+      }
       const currentExecInfo = executerInfo;
       let thisExicuterIfo = currentExecInfo[execId];
       if (thisExicuterIfo.recursion === 200) {
+        executerInfo.isWritable = true;
         executerInfo[execId].status = "recursion-exceed";
         RecursionExceededExecuters.push(execId);
       } else {
@@ -2824,6 +3004,7 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
             LCCN = 0;
           }
           executerInfo.counter = currentExecInfo.counter + 1;
+          executerInfo.delayIntervel++;
           executerInfo.counterLastUpdatedTime = Date.now();
           executerInfo.faultDetector.push(currentExecInfo.counter);
           executerInfo[execId].recursion = thisExicuterIfo.recursion + 1;
@@ -2838,6 +3019,7 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
             execId,
             executerCallback
           );
+          executerInfo.isWritable = true;
         } else {
           if (plaloadsLength <= 0) {
             exicutableDataContainer.splice(LCCN, 1);
@@ -2864,32 +3046,59 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
   };
   //runExicuter: it calls exeCuter . it is initializer of exicution stage
   const runExicuter = () => {
+    let stopedArray = [];
+    let currExecInfo1 = executerInfo;
+    for (const key in currExecInfo1) {
+      if (
+        key === "a" ||
+        key === "b" ||
+        key === "c" ||
+        key === "d" ||
+        key === "e"
+      ) {
+        let itemStatus = currExecInfo1[key].status;
+        if (itemStatus === "stoped") {
+          stopedArray.push(key);
+        }
+      }
+    }
+    if (stopedArray.length === 5) {
+      if (executerInfo.status !== "stoped") {
+        executerInfo.status = "stoped";
+      }
+    }
     if (exicutableDataContainer.length > 0) {
       let isNewInitializing = true;
       let array = [];
-      if (executerInfo["a"].status !== "stoped") {
-        array.push("a");
-      } else if (executerInfo["b"].status !== "stoped") {
-        array.push("b");
-      } else if (executerInfo["c"].status !== "stoped") {
-        array.push("c");
-      } else if (executerInfo["d"].status !== "stoped") {
-        array.push("d");
-      } else if (executerInfo["e"].status !== "stoped") {
-        array.push("e");
+      let currentExecInfo = executerInfo;
+      for (const key in currentExecInfo) {
+        if (
+          key === "a" ||
+          key === "b" ||
+          key === "c" ||
+          key === "d" ||
+          key === "e"
+        ) {
+          let itemStatus = currentExecInfo[key].status;
+          if (itemStatus !== "stoped") {
+            array.push(key);
+          }
+        }
       }
+
       if (array.length > 0) {
         isNewInitializing = false;
+        if (executerInfo.status !== "running") {
+          executerInfo.status = "running";
+        }
       }
+
       if (isNewInitializing) {
         const arr = ["a", "b", "c", "d", "e"];
         for (let i = 0; i < arr.length; i++) {
           executer(arr[i]);
         }
       } else {
-        if (executerInfo.status !== "running") {
-          executerInfo.status = "running";
-        }
         if (RecursionExceededExecuters.length > 0) {
           for (let i = 0; i < RecursionExceededExecuters.length; i++) {
             executerInfo[RecursionExceededExecuters[i]] = {
@@ -2908,21 +3117,41 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
     const intervel = setInterval(() => {
       console.log({
         tag: TAG + "linstener",
-        message:
-          "====================================================================================================",
+        // message:
+        //   "====================================================================================================",
         listnerCounter,
-        exicutableDataContainer,
+        // exicutableDataContainer,
+        exicutableDataContainerLenth: exicutableDataContainer.length,
         proccessedDataContainerLength: proccessedDataContainer.length,
         // proccessedDataContainer,
         exicutionCompletedContainerItems,
         executerErrorBucket,
         executerInfo,
         exicuterFaultDetectorReport,
+        alertDatabaseUpdaterInfo,
+        databaseUpdateErrorBucket,
+        listnerCommand,
+        listnercountDown,
       });
       listnerCounter++;
       loadAlerts();
       runExicuter();
       executerFaultDetector();
+      alertDatabaseUpdater();
+      commander();
+      //listener termination proccess
+      if (listnerCommand === "terminate") {
+        if (listnercountDown > 0) {
+          listnercountDown--;
+        }
+        if (listnercountDown === 0) {
+          clearInterval(intervel);
+          systemCM.systemConfigUpdate({
+            is_listener_running: false,
+            listener_tracker: [0],
+          });
+        }
+      }
     }, 500);
   };
   const requestManager = async () => {
@@ -2993,6 +3222,10 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
           });
         }
       } else {
+        if (listnercountDown > 0) {
+          listnerCommand = "";
+          listnercountDown = -2;
+        }
         console.log({
           tag: TAG + "requestManager",
           message: "system configue listern is in running already",
@@ -3011,9 +3244,9 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
     //calling system error analyser
     systemErrorAnalyser(systemErrorReportOnDB);
   };
-  //initiator
-  //initiator
-  //initiator
+  //initiator initiator initiator
+  //initiator initiator initiator
+  //initiator initiator initiator
   requestManager();
   res.status(200).json({ message: "request accepted" });
 });
