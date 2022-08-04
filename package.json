@@ -1,6 +1,8 @@
 {
+  "name": "send-alert-app",
+  "version": "0.0.0",
   "scripts": {
-    "start": "node index"
+    "start": "node index.js"
   },
 
   "dependencies": {
