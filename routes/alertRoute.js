@@ -677,7 +677,7 @@ router.post("/sendAlert/:id", (req, res) => {
     });
 });
 //new system-5 exicuters
-router.post("/sendAlert_csv6/:id", async (req, res) => {
+router.post("/sendAlert_csv6--removed/:id", async (req, res) => {
   const TAG = "sendAlert_csv6";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
   // below data can control the system, it altered by commander function
@@ -1345,7 +1345,7 @@ router.post("/sendAlert_csv6/:id", async (req, res) => {
   requestManager();
   res.status(200).json({ message: "request accepted" });
 });
-//new system - 3 exicuters
+//new system - 1 exicuters
 router.post("/sendAlert_csv7/:id", async (req, res) => {
   const TAG = "sendAlert_csv7";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
@@ -1406,13 +1406,32 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
   };
   //databaseUpdateErrorBucket: is the alertData have to update to db,and it got when alertDatabaseUpdater-trackUpdater catch err .
   var databaseUpdateErrorBucket = []; //element->{ id, track }
+  var preparationStageStatus = {
+    status: "",
+    csvReadingStatus: "",
+    generatingExicutableStatus: "",
+    preparationStageListeningResource: [], //{ status: "running",  uuid, }
+  };
+  //RequestMangerNewAlertAvailble: it will altered by request manager and loadAlert
+  var RequestMangerNewAlertAvailble = false;
 
   const commander = () => {
+    if (preparationStageStatus.preparationStageListeningResource.length > 0) {
+      // preparationStageStatus.status = "running";
+      // let find = preparationStageStatus.preparationStageListeningResource.find(
+      //   (e) => e.status === "running"
+      // );
+    } else {
+      preparationStageStatus.status = "stoped";
+    }
+
     if (
       executerInfo.status === "stoped" &&
       alertDatabaseUpdaterInfo.status === "stoped" &&
       alertDatabaseUpdaterInfo.reTryStatus === "stoped" &&
-      alertDatabaseUpdaterInfo.finalAlertStatus === "stoped"
+      alertDatabaseUpdaterInfo.finalAlertStatus === "stoped" &&
+      preparationStageStatus.status === "stoped" &&
+      !RequestMangerNewAlertAvailble
     ) {
       if (listnerCommand !== "terminate") {
         listnerCommand = "terminate";
@@ -1550,7 +1569,7 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
     }
   };
   //executableDataCreator: it creating whatsappPayloads based on available data in database
-  const executableDataCreator = (data) => {
+  const executableDataCreator = (data, uuid) => {
     const alertId = data._id;
     if (data.data_source === "DYNAMIC") {
       let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
@@ -1597,6 +1616,12 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
               payloads: whatsappParamsArray,
               totalPayloads: whatsappParamsArray.length,
             });
+            const fileterd =
+              preparationStageStatus.preparationStageListeningResource.filter(
+                (e) => e.uuid !== uuid
+              );
+            preparationStageStatus.preparationStageListeningResource = fileterd;
+            preparationStageStatus.generatingExicutableStatus = "stoped";
           });
       } else {
         console.log({
@@ -1616,31 +1641,43 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
     let foundNew = false;
     let alertData = null;
     const dataBaseInfo = await dataBaseChecker.dataBaseChecker();
-
+    const uuid =
+      Date.now() +
+      preparationStageStatus.preparationStageListeningResource.length;
     // console.log({ tag: TAG + " loadAlerts", dataBaseInfo });
     if (dataBaseInfo) {
       foundNew = true;
+      preparationStageStatus.preparationStageListeningResource.push({
+        status: "running",
+        uuid,
+      });
+      preparationStageStatus.status = "running";
+    } else {
+      RequestMangerNewAlertAvailble = false;
     }
     if (foundNew) {
+      preparationStageStatus.csvReadingStatus = "running";
       alertData = await loadCampaignData.loadCampaignData(
         dataBaseInfo.campaignId
       );
       if (alertData) {
+        preparationStageStatus.csvReadingStatus = "stoped";
         let deletion = campQM.deleteById(dataBaseInfo._id);
         if (deletion) {
           console.log({ tag: TAG + " loadAlerts", deletion });
         } else {
           console.log({ tag: TAG + " loadAlerts", message: "failed" });
         }
-        mainMM.findByIdAndUpdateAlertStatus(
-          dataBaseInfo.campaignId,
-          "PROCESSING"
-        );
+        // mainMM.findByIdAndUpdateAlertStatus(
+        //   dataBaseInfo.campaignId,
+        //   "PROCESSING"
+        // );
       }
       console.log({ tag: TAG + " loadAlerts", alertData });
     }
     if (alertData) {
-      executableDataCreator(alertData);
+      preparationStageStatus.generatingExicutableStatus = "running";
+      executableDataCreator(alertData, uuid);
     }
   };
   //linsterManager
@@ -1895,6 +1932,8 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
         exicuterFaultDetectorReport,
         alertDatabaseUpdaterInfo,
         databaseUpdateErrorBucket,
+        preparationStageStatus,
+        RequestMangerNewAlertAvailble,
         listnerCommand,
         listnercountDown,
       });
@@ -1920,6 +1959,7 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
     }, 500);
   };
   const requestManager = async () => {
+    RequestMangerNewAlertAvailble = true;
     //campaign queue details
     const cmq = await campQM.save(req.params.id);
     if (cmq === null) {
@@ -1930,12 +1970,14 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
           "can not Update alerts in to Queue  --requestManger"
         );
       } else {
+        mainMM.findByIdAndUpdateAlertStatus(req.params.id, "PROCESSING");
         console.log({
           tag: TAG + "requestManager",
           message: "new campaign ---cmq2 queued",
         });
       }
     } else {
+      mainMM.findByIdAndUpdateAlertStatus(req.params.id, "PROCESSING");
       console.log({
         tag: TAG + "requestManager",
         message: "new campaign ---cmq queued",
@@ -2013,6 +2055,11 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
   //initiator initiator initiator
   //initiator initiator initiator
   requestManager();
+  await new Promise((resolve) =>
+    setTimeout(() => {
+      resolve();
+    }, 500)
+  );
   res.status(200).json({ message: "request accepted" });
 });
 
