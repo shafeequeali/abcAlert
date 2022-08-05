@@ -154,11 +154,11 @@ router.post("/csv", async (req, res) => {
   const file = files ? files.file : "nothing";
   const fileName = file ? file.name : "nothing";
   let results = [];
-  // console.log({
-  //     message: 'file-upload',
-  //     file: file,
-  //     fileName,
-  // });
+  console.log({
+    message: "file-upload",
+    file: file,
+    fileName,
+  });
 
   let newFileName = Date.now() + ".csv";
   let newFilePath = "./uploads/" + newFileName;
