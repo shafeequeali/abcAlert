@@ -40,9 +40,9 @@ db.once("open", function () {
   console.log("Connected successfully");
 });
 
-// app.get("/", (req, res) => {
-//   res.send("hellooo");
-// });
+app.get("/hi", (req, res) => {
+  res.send("hellooo");
+});
 
 app.listen(port, (err, data) => {
   err &&
