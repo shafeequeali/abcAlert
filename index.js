@@ -3,6 +3,7 @@ var cors = require("cors");
 var bodyParser = require("body-parser");
 const mongoose = require("mongoose");
 const alertRoutes = require("./routes/alertRoute");
+require("dotenv").config();
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -26,10 +27,9 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 let username = "ali";
 let password = "ali";
 let cluster = "cluster0";
-let dbname = "teamMoplet";
 // let url1 = `mongodb+srv://${username}:${password}@${cluster}.mongodb.net/${dbname}?retryWrites=true&w=majority`;
-let url2 = `mongodb+srv://ali:ali@cluster0.uxqps.gcp.mongodb.net/${dbname}?retryWrites=true&w=majority`;
-
+// let url2 = `mongodb+srv://ali:ali@cluster0.uxqps.gcp.mongodb.net/${dbname}?retryWrites=true&w=majority`;
+let url2 = process.env.DB_CONNECTION_URL;
 mongoose.connect(url2, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
