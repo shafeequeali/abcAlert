@@ -27,9 +27,10 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 // let url1 = `mongodb+srv://${username}:${password}@${cluster}.mongodb.net/${dbname}?retryWrites=true&w=majority`;
 // let url2 = `mongodb+srv://ali:ali@cluster0.uxqps.gcp.mongodb.net/${dbname}?retryWrites=true&w=majority`;
-let url2 = `mongodb+srv://${process.env.DB_USER_NAME}:${process.env.DB_PASSWORD}@${process.env.CLUSTER_NAME}.uxqps.gcp.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`;
-// console.log({ url2 });
-mongoose.connect(url2, {
+// let url2 = `mongodb+srv://${process.env.DB_USER_NAME}:${process.env.DB_PASSWORD}@${process.env.CLUSTER_NAME}.uxqps.gcp.mongodb.net/${process.env.DB_NAME}?retryWrites=true&w=majority`;
+let url3 = process.env.DB_URL;
+console.log({ url3 });
+mongoose.connect(url3, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
