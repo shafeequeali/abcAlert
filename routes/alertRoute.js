@@ -1347,7 +1347,7 @@ router.post("/sendAlert_csv6--removed/:id", async (req, res) => {
   res.status(200).json({ message: "request accepted" });
 });
 //new system - 1 exicuters
-router.post("/sendAlert_csv7/:id", async (req, res) => {
+router.post("/sendAlert_csv7--paused/:id", async (req, res) => {
   const TAG = "sendAlert_csv7";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
   // below data can control the system, it altered by commander function
@@ -2063,7 +2063,775 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
   );
   res.status(200).json({ message: "request accepted" });
 });
+// used cloude api
+router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
+  const TAG = "sendAlert_csv7";
+  const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
+  // below data can control the system, it altered by commander function
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  var listnerCommand = ""; // terminate
+  var listnercountDown = -1; // -1 default ,-2 disabled
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //---------------------------------------------------
+  //exicutableDataContainer is a two diamentional container
+  const exicutableDataContainer = [];
+  //processedDataContainer: it is the to be updated in database ,elemets is object like {alertId,ph,res_data}
+  const proccessedDataContainer = [];
+  //exicutionCompletedItems: it is the data of completed item of exicutableDataContainer;
+  const exicutionCompletedContainerItems = [];
+  //executerErrorBucket is a data container ,it filled by the executer when failing the whatsApp-api calls
+  const executerErrorBucket = [];
+  const executerRecursionLimit = 1000;
+  var listnerCounter = 0;
+  var systemErrorReportOnDB = {
+    tag: "systemErrorReportOnDB",
+    campaignQueueError: "",
+    systemConfigError: "",
+  };
+  var systemErrorReportOnLocal = {
+    tag: "systemErrorReportOnLocal",
+    executer: "",
+  };
+  //LCCN : Last Called Colum Number
+  var LCCN = 0;
+  //executerInfo: it is the info about executer. about the recution,and status.
+  var executerInfo = {
+    counter: 0,
+    delayIntervel: 0,
+    counterLastUpdatedTime: null,
+    faultDetector: [],
+    status: "stoped", //running or stoped
+    isWritable: true,
+    a: { recursion: 0, status: "stoped" },
+    b: { recursion: 0, status: "stoped" },
+    c: { recursion: 0, status: "stoped" },
+    d: { recursion: 0, status: "stoped" },
+    e: { recursion: 0, status: "stoped" },
+    //the status willbe enum of [stoped,recursion-exceed,running]
+  };
+  //executerRecursionHolder: whenever the any one of five executer exceeded the recurion limit ,that info will appear hear eg: [a,b,e],
+  var RecursionExceededExecuters = [];
+  //exicuterFaultDetectorReport: it is the report of unexpected exicuter is working or not
+  var exicuterFaultDetectorReport = [];
+  //alertDatabaseUpdaterInfo: it is a info about alertDatabaseUpdater
+  var alertDatabaseUpdaterInfo = {
+    status: "stoped", //running or stoped
+    reTryStatus: "stoped", //running or stoped
+    finalAlertStatus: "stoped", //running or stoped
+  };
+  //databaseUpdateErrorBucket: is the alertData have to update to db,and it got when alertDatabaseUpdater-trackUpdater catch err .
+  var databaseUpdateErrorBucket = []; //element->{ id, track }
+  var preparationStageStatus = {
+    status: "",
+    csvReadingStatus: "",
+    generatingExicutableStatus: "",
+    preparationStageListeningResource: [], //{ status: "running",  uuid, }
+  };
+  //RequestMangerNewAlertAvailble: it will altered by request manager and loadAlert
+  var RequestMangerNewAlertAvailble = false;
 
+  const commander = () => {
+    if (preparationStageStatus.preparationStageListeningResource.length > 0) {
+      // preparationStageStatus.status = "running";
+      // let find = preparationStageStatus.preparationStageListeningResource.find(
+      //   (e) => e.status === "running"
+      // );
+    } else {
+      preparationStageStatus.status = "stoped";
+    }
+
+    if (
+      executerInfo.status === "stoped" &&
+      alertDatabaseUpdaterInfo.status === "stoped" &&
+      alertDatabaseUpdaterInfo.reTryStatus === "stoped" &&
+      alertDatabaseUpdaterInfo.finalAlertStatus === "stoped" &&
+      preparationStageStatus.status === "stoped" &&
+      !RequestMangerNewAlertAvailble
+    ) {
+      if (listnerCommand !== "terminate") {
+        listnerCommand = "terminate";
+        listnercountDown = 50;
+      }
+    } else {
+      listnerCommand = "";
+      listnercountDown = -2;
+    }
+  };
+
+  //alertDatabaseUpdater : it will manage trackupdation of each alertApicalls and if alert completed it will update the status
+  const alertDatabaseUpdater = () => {
+    const trackUpdater = async (id, track) => {
+      // let track = {
+      //     status: 'SUCCESS',
+      //      ph:889999999,
+      //      res_data:<response>,
+      // }
+      await application
+        .findByIdAndUpdate(id, {
+          $push: {
+            whatsapp_alert_track: track,
+          },
+        })
+        .then((data) => {})
+        .catch((err) => {
+          databaseUpdateErrorBucket.push({ id, track });
+        });
+    };
+    if (alertDatabaseUpdaterInfo.status !== "running") {
+      const alertDatabaseUpdater1 = async () => {
+        if (proccessedDataContainer.length > 0) {
+          alertDatabaseUpdaterInfo.status = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = proccessedDataContainer[0];
+            proccessedDataContainer.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 30)
+            );
+            trackUpdater(item.alertId, {
+              status: item.status,
+              res_data: item.res_data,
+              ph: item.ph,
+            });
+            if (proccessedDataContainer.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.status = "stoped";
+              n = 100;
+            }
+          }
+        }
+      };
+      alertDatabaseUpdater1();
+    }
+    if (alertDatabaseUpdaterInfo.reTryStatus !== "running") {
+      const alertDatabaseUpdater2OnErrorBase = async () => {
+        if (databaseUpdateErrorBucket.length > 0) {
+          alertDatabaseUpdaterInfo.reTryStatus = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = databaseUpdateErrorBucket[0];
+            databaseUpdateErrorBucket.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 50)
+            );
+            trackUpdater(item.id, item.track);
+            if (databaseUpdateErrorBucket.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.reTryStatus = "stoped";
+              n = 100;
+            }
+          }
+        }
+      };
+      alertDatabaseUpdater2OnErrorBase();
+    }
+
+    if (alertDatabaseUpdaterInfo.finalAlertStatus !== "running") {
+      const updateProcessedAlert = async (alertId) => {
+        await application
+          .findByIdAndUpdate(alertId, {
+            alert_status: "PROCESSED",
+          })
+          .then((data) => {})
+          .catch((err) => {
+            exicutionCompletedContainerItems.push(alertId);
+          });
+      };
+      (async function () {
+        if (exicutionCompletedContainerItems.length > 0) {
+          alertDatabaseUpdaterInfo.finalAlertStatus = "running";
+          let n = 0;
+          while (n < 100) {
+            let item = exicutionCompletedContainerItems[0];
+            exicutionCompletedContainerItems.shift();
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 400)
+            );
+            updateProcessedAlert(item);
+            if (exicutionCompletedContainerItems.length > 0) {
+              n = 1;
+            } else {
+              alertDatabaseUpdaterInfo.finalAlertStatus = "stoped";
+              n = 100;
+            }
+          }
+        }
+      })();
+    }
+  };
+  //executerFaultDetector: it will find unexpected exicuter is working or not
+  const executerFaultDetector = () => {
+    if (executerInfo.faultDetector.length > 50) {
+      const faultArray = executerInfo.faultDetector;
+      executerInfo.faultDetector = [];
+      let dupArra = [];
+      for (let i = 0; i < faultArray.length; i++) {
+        const item = faultArray[i];
+        const found = dupArra.find((e) => e === item);
+        dupArra.push(item);
+        if (found) {
+          exicuterFaultDetectorReport.push("fault");
+        }
+      }
+    }
+  };
+  //executableDataCreator: it creating whatsappPayloads based on available data in database
+  const executableDataCreator = (data, uuid) => {
+    const alertId = data._id;
+    if (data.data_source === "DYNAMIC") {
+      let isDataAvailabe = data ? (data.csv_file ? true : false) : false;
+      const bindingData = JSON.parse(data.binding_data);
+      let results = [];
+      if (isDataAvailabe) {
+        fs.createReadStream(data.csv_file)
+          .pipe(csv())
+          .on("data", (csvData) => {
+            results.push(csvData);
+          })
+          .on("end", () => {
+            mainMM.findByIdAndUpdateCsvLength(alertId, results.length);
+            let whatsappParamsArray = [];
+            for (const csvData of results) {
+              let whatsappParams = {
+                name: "",
+                email_id: "",
+                roll_number: "",
+                phone_number: "",
+              };
+              for (const key in whatsappParams) {
+                let type = bindingData[key].type;
+                if (type === "csv_data") {
+                  // console.log('........alertId............csvdata.........');
+                  let csv_key = bindingData[key].value;
+                  whatsappParams[key] = csvData[csv_key]
+                    ? csvData[csv_key]
+                    : "";
+                } else if (type === "type_data") {
+                  // console.log('....................type_data.........');
+                  whatsappParams[key] = data[key] ? data[key] : "";
+                }
+              }
+              // console.log(whatsappParams);
+              let errFound = utility.whatsappParamsValidation(whatsappParams);
+
+              if (!errFound) {
+                whatsappParamsArray.push(whatsappParams);
+              }
+            }
+            exicutableDataContainer.push({
+              alertId,
+              payloads: whatsappParamsArray,
+              totalPayloads: whatsappParamsArray.length,
+            });
+            const fileterd =
+              preparationStageStatus.preparationStageListeningResource.filter(
+                (e) => e.uuid !== uuid
+              );
+            preparationStageStatus.preparationStageListeningResource = fileterd;
+            preparationStageStatus.generatingExicutableStatus = "stoped";
+          });
+      } else {
+        console.log({
+          tag: TAG + "runSystem-csv finder",
+          message: "csv fle not found",
+        });
+      }
+    } else if (data.data_source === "STATIC") {
+      console.log({
+        tag: TAG + "runSystem-> appliction-type-chooser",
+        message: "STATIC NOT WORKING",
+      });
+    }
+  };
+  //loading alerts
+  const loadAlerts = async () => {
+    let foundNew = false;
+    let alertData = null;
+    const dataBaseInfo = await dataBaseChecker.dataBaseChecker();
+    const uuid =
+      Date.now() +
+      preparationStageStatus.preparationStageListeningResource.length;
+    // console.log({ tag: TAG + " loadAlerts", dataBaseInfo });
+    if (dataBaseInfo) {
+      foundNew = true;
+      preparationStageStatus.preparationStageListeningResource.push({
+        status: "running",
+        uuid,
+      });
+      preparationStageStatus.status = "running";
+    } else {
+      RequestMangerNewAlertAvailble = false;
+    }
+    if (foundNew) {
+      preparationStageStatus.csvReadingStatus = "running";
+      alertData = await loadCampaignData.loadCampaignData(
+        dataBaseInfo.campaignId
+      );
+      if (alertData) {
+        preparationStageStatus.csvReadingStatus = "stoped";
+        let deletion = campQM.deleteById(dataBaseInfo._id);
+        if (deletion) {
+          console.log({ tag: TAG + " loadAlerts", deletion });
+        } else {
+          console.log({ tag: TAG + " loadAlerts", message: "failed" });
+        }
+        // mainMM.findByIdAndUpdateAlertStatus(
+        //   dataBaseInfo.campaignId,
+        //   "PROCESSING"
+        // );
+      }
+      console.log({ tag: TAG + " loadAlerts", alertData });
+    }
+    if (alertData) {
+      preparationStageStatus.generatingExicutableStatus = "running";
+      executableDataCreator(alertData, uuid);
+    }
+  };
+  //linsterManager
+  const listnerManager = async () => {
+    if (listnerCounter !== 0) {
+      systemCM.updateListnerTrack(listnerCounter);
+    }
+    listnerCounter++;
+    if (listnerCounter >= 10000) {
+      systemCM.updateListner({ listener_tracker: [0] });
+      listnerCounter = 0;
+    }
+  };
+  //system Error reporter
+  const systemErrorReporter = (key, value) => {
+    systemErrorReportOnDB[key] = value;
+  };
+  //system Error reporter on local
+  const systemErrorReporterOnLocal = (key, value) => {
+    systemErrorReportOnLocal[key] = value;
+  };
+  // systemErrorAnalyser
+  const systemErrorAnalyser = async (obj) => {
+    let stoper = 0;
+    for (const key in obj) {
+      if ((stoper = 0)) {
+        if (obj[key] != "") {
+          stoper = 1;
+          console.log({
+            tag: TAG + "systemErrorAnalyser",
+            message:
+              "error detected ######################################################################",
+            message2:
+              "error detected ######################################################################",
+            message3:
+              "error detected ######################################################################",
+            errorReport: obj,
+          });
+        }
+      }
+    }
+  };
+  //executerCallback: to fillthe executerErrorBucket;
+  const executerCallback = async (okData, notOkData, finalMessage, execId) => {
+    if (okData) {
+      proccessedDataContainer.push(okData);
+    }
+    if (notOkData) {
+      //executerErrorBucket : this feature not yet avaible
+      executerErrorBucket.push(notOkData);
+      // proccessedDataContainer.push(notOkData);
+    }
+    if (finalMessage) {
+      exicutionCompletedContainerItems.push(finalMessage);
+    }
+    if (executerInfo.delayIntervel >= 20) {
+      // await new Promise((resolve) =>
+      //   setTimeout(() => {
+      //     resolve();
+      //   }, 500)
+      // );
+      executerInfo.delayIntervel = 0;
+      executer(execId);
+    } else {
+      executer(execId);
+    }
+  };
+  //calling whatsAppApi
+  const executer = async (execId) => {
+    if (
+      exicutableDataContainer.length > 0 &&
+      LCCN < exicutableDataContainer.length
+    ) {
+      if (!executerInfo.isWritable) {
+        await (async function delayLoop() {
+          if (!executerInfo.isWritable) {
+            console.log(
+              "------------(((((((((((((((((((((((exicuter-delay-Loop-working))))))))))))))))))))))))))))----------------"
+            );
+            await new Promise((resolve) =>
+              setTimeout(() => {
+                resolve();
+              }, 150)
+            );
+            delayLoop();
+          } else {
+            executerInfo.isWritable = false;
+          }
+        })();
+      } else {
+        executerInfo.isWritable = false;
+      }
+      const currentExecInfo = executerInfo;
+      let thisExicuterIfo = currentExecInfo[execId];
+      if (thisExicuterIfo.recursion === executerRecursionLimit) {
+        executerInfo.isWritable = true;
+        executerInfo[execId].status = "recursion-exceed";
+        RecursionExceededExecuters.push(execId);
+      } else {
+        const item = exicutableDataContainer[LCCN];
+        const plaloadsLength = item.payloads.length;
+        const nextIndex = item.nextIndex ? item.nextIndex : 0;
+        const totalPayloads = item.totalPayloads;
+        const countOfCompleted = item.countOfCompleted
+          ? item.countOfCompleted
+          : 0;
+        if (plaloadsLength > 0 && nextIndex < plaloadsLength) {
+          let alertId = item.alertId;
+          let payload = item.payloads[nextIndex];
+          exicutableDataContainer[LCCN].nextIndex = nextIndex + 1;
+          exicutableDataContainer[LCCN].countOfCompleted = countOfCompleted + 1;
+          // final message will helped for the database updation of that alert as it is completed
+          let finalMessage = null;
+          if (countOfCompleted + 1 == totalPayloads) {
+            finalMessage = "completed";
+            exicutableDataContainer.splice(LCCN, 1);
+          } else {
+            finalMessage = null;
+          }
+          if (LCCN + 1 < exicutableDataContainer.length) {
+            LCCN++;
+          } else if (LCCN + 1 == exicutableDataContainer.length) {
+            LCCN = 0;
+          } else if (LCCN + 1 > exicutableDataContainer.length) {
+            LCCN = 0;
+          }
+          executerInfo.counter = currentExecInfo.counter + 1;
+          executerInfo.delayIntervel++;
+          executerInfo.counterLastUpdatedTime = Date.now();
+          executerInfo.faultDetector.push(currentExecInfo.counter);
+          executerInfo[execId].recursion = thisExicuterIfo.recursion + 1;
+          if (thisExicuterIfo.status !== "running") {
+            executerInfo[execId].status = "running";
+          }
+          //accepting callback with params okData and notOkData
+          whatsApp.whatsAppApiCaller(
+            payload,
+            alertId,
+            finalMessage,
+            execId,
+            executerCallback
+          );
+          executerInfo.isWritable = true;
+        } else {
+          if (plaloadsLength <= 0) {
+            exicutableDataContainer.splice(LCCN, 1);
+          } else if (nextIndex > plaloadsLength) {
+            systemErrorReporterOnLocal(
+              "executer",
+              "nextIndex exeeded the plaloadsLength"
+            );
+            exicutableDataContainer.splice(LCCN, 1);
+          }
+        }
+      }
+    } else {
+      if (exicutableDataContainer.length <= 0) {
+        executerInfo[execId].status = "stoped";
+      }
+      if (LCCN >= exicutableDataContainer.length) {
+        systemErrorReporterOnLocal(
+          "executer",
+          "LCCN exeeded the exicutableDataContainer.length"
+        );
+      }
+    }
+  };
+  //runExicuter: it calls exeCuter . it is initializer of exicution stage
+  const runExicuter = () => {
+    let stopedArray = [];
+    let currExecInfo1 = executerInfo;
+    for (const key in currExecInfo1) {
+      if (
+        key === "a" ||
+        key === "b" ||
+        key === "c" ||
+        key === "d" ||
+        key === "e"
+      ) {
+        let itemStatus = currExecInfo1[key].status;
+        if (itemStatus === "stoped") {
+          stopedArray.push(key);
+        }
+      }
+    }
+    if (stopedArray.length === 5) {
+      if (executerInfo.status !== "stoped") {
+        executerInfo.status = "stoped";
+      }
+    }
+    if (exicutableDataContainer.length > 0) {
+      let isNewInitializing = true;
+      let array = [];
+      let currentExecInfo = executerInfo;
+      for (const key in currentExecInfo) {
+        if (
+          key === "a" ||
+          key === "b" ||
+          key === "c" ||
+          key === "d" ||
+          key === "e"
+        ) {
+          let itemStatus = currentExecInfo[key].status;
+          if (itemStatus !== "stoped") {
+            array.push(key);
+          }
+        }
+      }
+
+      if (array.length > 0) {
+        isNewInitializing = false;
+        if (executerInfo.status !== "running") {
+          executerInfo.status = "running";
+        }
+      }
+
+      if (isNewInitializing) {
+        // const arr = ["a", "b", "c","d","e"];
+        const arr = ["a"];
+        for (let i = 0; i < arr.length; i++) {
+          executer(arr[i]);
+        }
+      } else {
+        if (RecursionExceededExecuters.length > 0) {
+          for (let i = 0; i < RecursionExceededExecuters.length; i++) {
+            executerInfo[RecursionExceededExecuters[i]] = {
+              recursion: 0,
+              status: "running",
+            };
+            executer(RecursionExceededExecuters[i]);
+          }
+          RecursionExceededExecuters = [];
+        }
+      }
+    }
+  };
+  //lister : handling whole the system by callin fuctions on intervels
+  const linstener = async () => {
+    const intervel = setInterval(() => {
+      console.log({
+        tag: TAG + "linstener",
+        // message:
+        //   "====================================================================================================",
+        listnerCounter,
+        // exicutableDataContainer,
+        exicutableDataContainerLenth: exicutableDataContainer.length,
+        proccessedDataContainerLength: proccessedDataContainer.length,
+        // proccessedDataContainer,
+        exicutionCompletedContainerItems,
+        executerErrorBucket,
+        executerInfo,
+        exicuterFaultDetectorReport,
+        alertDatabaseUpdaterInfo,
+        databaseUpdateErrorBucket,
+        preparationStageStatus,
+        RequestMangerNewAlertAvailble,
+        listnerCommand,
+        listnercountDown,
+      });
+      listnerCounter++;
+      loadAlerts();
+      runExicuter();
+      executerFaultDetector();
+      alertDatabaseUpdater();
+      commander();
+      //listener termination proccess
+      if (listnerCommand === "terminate") {
+        if (listnercountDown > 0) {
+          listnercountDown--;
+        }
+        if (listnercountDown === 0) {
+          clearInterval(intervel);
+          systemCM.systemConfigUpdate({
+            is_listener_running: false,
+            listener_tracker: [0],
+          });
+        }
+      }
+    }, 500);
+  };
+  const requestManager = async () => {
+    RequestMangerNewAlertAvailble = true;
+    //campaign queue details
+    const cmq = await campQM.save(req.params.id);
+    if (cmq === null) {
+      const cmq2 = await campQM.save(req.params.id);
+      if (cmq2 === null) {
+        systemErrorReporter(
+          "campaignQueueError",
+          "can not Update alerts in to Queue  --requestManger"
+        );
+      } else {
+        mainMM.findByIdAndUpdateAlertStatus(req.params.id, "PROCESSING");
+        console.log({
+          tag: TAG + "requestManager",
+          message: "new campaign ---cmq2 queued",
+        });
+      }
+    } else {
+      mainMM.findByIdAndUpdateAlertStatus(req.params.id, "PROCESSING");
+      console.log({
+        tag: TAG + "requestManager",
+        message: "new campaign ---cmq queued",
+      });
+    }
+    //system config details
+    // const scm = await systemCM.save(true, listnerCounter);
+    // if (scm === null) {
+    //   const scm2 = await systemCM.save(true, listnerCounter);
+    //   if (scm2 === null) {
+    //     systemErrorReporter(
+    //       "systemConfigSaveError",
+    //       "can not save listner data into db --requestManger"
+    //     );
+    //   }
+    // }
+    let systemConfigData = await systemCM.findOne();
+    console.log("[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]");
+    console.log(systemConfigData);
+    if (systemConfigData) {
+      if (!systemConfigData.is_listener_running) {
+        const scm = await systemCM.systemConfigUpdate({
+          is_listener_running: true,
+          listener_tracker: [0],
+        });
+        if (scm === null) {
+          const scm2 = await systemCM.systemConfigUpdate({
+            is_listener_running: true,
+            listener_tracker: [0],
+          });
+          if (scm2 === null) {
+            systemErrorReporter(
+              "systemConfigError",
+              "can not save listner data into db --requestManger"
+            );
+          } else {
+            linstener();
+            console.log({
+              tag: TAG + "requestManager",
+              message:
+                "system configue --scm2. updated ,listener started running",
+            });
+          }
+        } else {
+          linstener();
+          console.log({
+            tag: TAG + "requestManager",
+            message: "system configue --scm. updated ,listener started running",
+          });
+        }
+      } else {
+        if (listnercountDown > 0) {
+          listnerCommand = "";
+          listnercountDown = -2;
+        }
+        console.log({
+          tag: TAG + "requestManager",
+          message: "system configue listern is in running already",
+        });
+      }
+    } else {
+      systemErrorReporter(
+        "systemConfigError",
+        "can not find listner data from db --requestManger"
+      );
+      console.log({
+        tag: TAG + "requestManager",
+        message: "system configue not found",
+      });
+    }
+    //calling system error analyser
+    systemErrorAnalyser(systemErrorReportOnDB);
+  };
+  //initiator initiator initiator
+  //initiator initiator initiator
+  //initiator initiator initiator
+  requestManager();
+  await new Promise((resolve) =>
+    setTimeout(() => {
+      resolve();
+    }, 500)
+  );
+  res.status(200).json({ message: "request accepted" });
+});
+router.post("/sendAlert_csv7/:id", async (req, res) => {
+  let errBucket = [];
+  let successBucket = [];
+  const executerCallback = (track, fails, finalMessage, execId) => {
+    if (track) {
+      successBucket.push("success");
+    } else if (fails) {
+      errBucket.push("fails");
+    }
+  };
+  const loopLimit = 150;
+  const phoneNumbers = [
+    "917026157826",
+    "919946801465",
+    "917025066229",
+    "919895039039",
+    "918301848679",
+  ];
+  for (let i = 0; i < loopLimit; i++) {
+    let j = 0;
+    if (i >= 30) {
+      j = 1;
+    }
+    if (i >= 60) {
+      j = 2;
+    }
+    if (i >= 90) {
+      j = 3;
+    }
+    if (i >= 120) {
+      j = 4;
+    }
+
+    await whatsApp.whatsAppApiCaller(
+      { phone_number: phoneNumbers[j] },
+      56578767,
+      34543543,
+      i,
+      executerCallback
+    );
+  }
+  await new Promise((resolve) =>
+    setTimeout(() => {
+      resolve();
+    }, 25000)
+  );
+  console.log({
+    errLenth: errBucket.length,
+    successLength: successBucket.length,
+  });
+});
 router.post("/test", async (req, res) => {
   // let newTestmodel = new testModel({
   //     track: [{
