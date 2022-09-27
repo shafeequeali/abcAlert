@@ -2064,7 +2064,7 @@ router.post("/sendAlert_csv7--paused/:id", async (req, res) => {
   res.status(200).json({ message: "request accepted" });
 });
 // used cloude api
-router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
+router.post("/sendAlert_csv7/:id", async (req, res) => {
   const TAG = "sendAlert_csv7";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
   // below data can control the system, it altered by commander function
@@ -2781,7 +2781,7 @@ router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
   );
   res.status(200).json({ message: "request accepted" });
 });
-router.post("/sendAlert_csv7/:id", async (req, res) => {
+router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
   let errBucket = [];
   let successBucket = [];
   const executerCallback = (track, fails, finalMessage, execId) => {
@@ -2791,13 +2791,12 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
       errBucket.push("fails");
     }
   };
-  const loopLimit = 150;
+  const loopLimit = 4;
   const phoneNumbers = [
     "917026157826",
-    "919946801465",
-    "917025066229",
-    "919895039039",
-    "918301848679",
+    "917026157826",
+    "917026157826",
+    "917026157826",
   ];
   for (let i = 0; i < loopLimit; i++) {
     let j = 0;
@@ -2825,7 +2824,7 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
   await new Promise((resolve) =>
     setTimeout(() => {
       resolve();
-    }, 25000)
+    }, 1000*5)
   );
   console.log({
     errLenth: errBucket.length,
