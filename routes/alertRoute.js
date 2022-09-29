@@ -2192,7 +2192,12 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
       };
       const insertMessageQuarry =
         "INSERT INTO test.mis (message_id, form_number, to_number, message_content) VALUES (?,?,?,?)";
-      const params = [message_id, form_number, to_number, message_content];
+      const params = [
+        message_id,
+        form_number,
+        to_number,
+        JSON.stringify(message_content),
+      ];
       cassandraDb.insertOrUpdateData(
         insertMessageQuarry,
         params,
