@@ -2168,27 +2168,31 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
   //alertDatabaseUpdater : it will manage trackupdation of each alertApicalls and if alert completed it will update the status
   const alertDatabaseUpdater = () => {
     const cassandraDbUpdater = (resData) => {
-      const res_data = {
-        messaging_product: "whatsapp",
-        contacts: [{ input: "918301848679", wa_id: "918301848679" }],
-        messages: [
-          {
-            id: "wamid.HBgMOTE4MzAxODQ4Njc5FQIAERgSRkI2OTQ1NEVCQTk3MjhFQUQ1AA==",
-          },
-        ],
-      };
+      // const res_data = {
+      //   messaging_product: "whatsapp",
+      //   contacts: [{ input: "918301848679", wa_id: "918301848679" }],
+      //   messages: [
+      //     {
+      //       id: "wamid.HBgMOTE4MzAxODQ4Njc5FQIAERgSRkI2OTQ1NEVCQTk3MjhFQUQ1AA==",
+      //     },
+      //   ],
+      // };
 
       // message_id | deliverd_datetime | failed_datetime | failed_reson | final_status
       // | form_number | message_content | message_datetime | read_datetime |
       //  recieved_datetime | send_datetime | to_number
-      console.log({ tag: "cassandraDbUpdter", resData });
+      // console.log({ tag: "cassandraDbUpdter", resData });
       const message_id = resData.messages[0].id;
       const form_number = resData.contacts[0].input;
       const to_number = resData.contacts[0].wa_id;
-
+      const message_content = {
+        type: "template",
+        name: "test_n",
+        parameters: ["<name>\\n"],
+      };
       const insertMessageQuarry =
-        "INSERT INTO test.mis (message_id, form_number, to_number) VALUES (?,?,?)";
-      const params = [message_id, form_number, to_number];
+        "INSERT INTO test.mis (message_id, form_number, to_number, message_content) VALUES (?,?,?,?)";
+      const params = [message_id, form_number, to_number, message_content];
       cassandraDb.insertOrUpdateData(
         insertMessageQuarry,
         params,
@@ -2196,7 +2200,7 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
           if (err) {
             console.log({ TAG: "cassandraDbUpdter", err });
           } else {
-            console.log({ TAG: "cassandraDbUpdter", dbresponse: data });
+            // console.log({ TAG: "cassandraDbUpdter", dbresponse: data });
           }
         }
       );
@@ -2233,7 +2237,8 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
                 resolve();
               }, 30)
             );
-
+            console.log("{{{{{{{{{{{{{{{{{{{{{{{}}}}}}}}}}}}}}}}}}}}}}}");
+            console.log(item);
             cassandraDbUpdater(JSON.parse(item.res_data));
             trackUpdater(item.alertId, {
               status: item.status,
