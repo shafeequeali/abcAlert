@@ -21,6 +21,9 @@ require("dotenv").config();
 
 const dataBaseChecker = require("../modules/databaseChecker");
 const loadCampaignData = require("../modules/campaignLoader");
+
+const cassandraDb = require("../modeles/cassandraModel/cassandraMessageModel");
+
 router.use(
   fileUpload({
     limits: {
@@ -2064,7 +2067,7 @@ router.post("/sendAlert_csv7--paused/:id", async (req, res) => {
   res.status(200).json({ message: "request accepted" });
 });
 // used cloude api
-router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
+router.post("/sendAlert_csv7/:id", async (req, res) => {
   const TAG = "sendAlert_csv7";
   const IdOfsystemConfigration = "62d4db8ebb4c949a10b775b4";
   // below data can control the system, it altered by commander function
@@ -2164,6 +2167,45 @@ router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
 
   //alertDatabaseUpdater : it will manage trackupdation of each alertApicalls and if alert completed it will update the status
   const alertDatabaseUpdater = () => {
+    const cassandraDbUpdater = (resData) => {
+      // const res_data = {
+      //   messaging_product: "whatsapp",
+      //   contacts: [{ input: "918301848679", wa_id: "918301848679" }],
+      //   messages: [
+      //     {
+      //       id: "wamid.HBgMOTE4MzAxODQ4Njc5FQIAERgSRkI2OTQ1NEVCQTk3MjhFQUQ1AA==",
+      //     },
+      //   ],
+      // };
+
+      // message_id | deliverd_datetime | failed_datetime | failed_reson | final_status
+      // | form_number | message_content | message_datetime | read_datetime |
+      //  recieved_datetime | send_datetime | to_number
+      // console.log({ tag: "cassandraDbUpdter", resData });
+      const message_id = resData.messages[0].id;
+      const form_number = resData.contacts[0].input;
+      const to_number = resData.contacts[0].wa_id;
+      const message_content = {
+        type: "template",
+        name: "test_n",
+        parameters: ["<name>\\n"],
+      };
+      const insertMessageQuarry =
+        "INSERT INTO test.mis (message_id, form_number, to_number, message_content) VALUES (?,?,?,?)";
+      const params = [message_id, form_number, to_number, message_content];
+      cassandraDb.insertOrUpdateData(
+        insertMessageQuarry,
+        params,
+        (err, data) => {
+          if (err) {
+            console.log({ TAG: "cassandraDbUpdter", err });
+          } else {
+            // console.log({ TAG: "cassandraDbUpdter", dbresponse: data });
+          }
+        }
+      );
+    };
+
     const trackUpdater = async (id, track) => {
       // let track = {
       //     status: 'SUCCESS',
@@ -2181,6 +2223,7 @@ router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
           databaseUpdateErrorBucket.push({ id, track });
         });
     };
+
     if (alertDatabaseUpdaterInfo.status !== "running") {
       const alertDatabaseUpdater1 = async () => {
         if (proccessedDataContainer.length > 0) {
@@ -2194,6 +2237,9 @@ router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
                 resolve();
               }, 30)
             );
+            console.log("{{{{{{{{{{{{{{{{{{{{{{{}}}}}}}}}}}}}}}}}}}}}}}");
+            console.log(item);
+            cassandraDbUpdater(JSON.parse(item.res_data));
             trackUpdater(item.alertId, {
               status: item.status,
               res_data: item.res_data,
@@ -2781,7 +2827,7 @@ router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
   );
   res.status(200).json({ message: "request accepted" });
 });
-router.post("/sendAlert_csv7/:id", async (req, res) => {
+router.post("/sendAlert_csv7_pused/:id", async (req, res) => {
   let errBucket = [];
   let successBucket = [];
   const executerCallback = (track, fails, finalMessage, execId) => {
@@ -2791,13 +2837,12 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
       errBucket.push("fails");
     }
   };
-  const loopLimit = 150;
+  const loopLimit = 4;
   const phoneNumbers = [
     "917026157826",
-    "919946801465",
-    "917025066229",
-    "919895039039",
-    "918301848679",
+    "917026157826",
+    "917026157826",
+    "917026157826",
   ];
   for (let i = 0; i < loopLimit; i++) {
     let j = 0;
@@ -2825,7 +2870,7 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
   await new Promise((resolve) =>
     setTimeout(() => {
       resolve();
-    }, 25000)
+    }, 1000 * 5)
   );
   console.log({
     errLenth: errBucket.length,
