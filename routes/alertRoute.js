@@ -2191,7 +2191,7 @@ router.post("/sendAlert_csv7/:id", async (req, res) => {
         parameters: ["<name>\\n"],
       };
       const insertMessageQuarry =
-        "INSERT INTO test.mis (message_id, form_number, to_number, message_content) VALUES (?,?,?,?)";
+        "INSERT INTO test.mis2 (message_id, form_number, to_number, message_content) VALUES (?,?,?,?)";
       const params = [
         message_id,
         form_number,
